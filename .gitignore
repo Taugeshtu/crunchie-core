@@ -1,0 +1,9 @@
+/target/
+**/*.rs.bk
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
