@@ -51,3 +51,8 @@ pub fn process_buffer(text: &str, config: &Config) -> (String, Vec<model::Diagno
 
     (final_text, diagnostics)
 }
+
+#[cfg(test)]
+mod tests;
+
+
