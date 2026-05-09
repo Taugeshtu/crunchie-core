@@ -1,6 +1,7 @@
 pub mod config;
 pub mod model;
 pub mod parser;
+pub mod builtins;
 
 use config::Config;
 use model::{EngineResult, ParserResult, TextEdit};
@@ -31,7 +32,7 @@ pub fn apply_edits(_text: &str, _edits: &[TextEdit]) -> String {
 /// Convenience Wrapper
 /// Runs the entire pipeline and returns the modified buffer and any diagnostics.
 pub fn process_buffer(text: &str, config: &Config) -> (String, Vec<model::Diagnostic>) {
-    let builtins = parser::default_builtins();
+    let builtins = builtins::generate_symbol_map();
     let constants = config.constants.keys().map(|s| s.as_str());
 
     let parsed = parse(text, &builtins, constants);

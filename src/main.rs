@@ -14,7 +14,7 @@ fn main() {
         "-5",
     ];
 
-    let builtins = crunchie_core::parser::default_builtins();
+    let builtins = crunchie_core::builtins::generate_symbol_map();
     let constants = vec!["PI", "TAU", "E"];
 
     for (i, &case) in test_cases.iter().enumerate() {

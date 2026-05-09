@@ -1,28 +1,6 @@
 use crate::model::{Comment, Container, Diagnostic, ParserResult, Unit};
+use crate::builtins;
 use std::collections::HashMap;
-
-pub const CONSTANTS_START_ID: i32 = 1_000_000;
-pub const FUNCTIONS_START_ID: i32 = -1_000_000;
-pub const OPERATORS: &[char] = &['+', '-', '*', '/', '=', '^', ','];
-
-pub fn default_builtins() -> HashMap<String, i32> {
-    let mut m = HashMap::new();
-    
-    let mut op_id = -1;
-    for &op in OPERATORS {
-        m.insert(op.to_string(), op_id);
-        op_id -= 1;
-    }
-
-    let default_functions = ["sin", "cos", "tan", "log", "sqrt"];
-    let mut func_id = FUNCTIONS_START_ID;
-    for func in default_functions {
-        m.insert(func.to_string(), func_id);
-        func_id -= 1;
-    }
-
-    m
-}
 
 struct ParserState {
     next_id: i32,
@@ -85,7 +63,7 @@ pub fn sweep<'a>(
         state.result.symbols.insert(k.clone(), *v);
     }
 
-    let mut current_constant_id = CONSTANTS_START_ID;
+    let mut current_constant_id = builtins::CONSTANTS_START_ID;
     for c in constants {
         state.result.symbols.insert(c.to_string(), current_constant_id);
         current_constant_id += 1;
