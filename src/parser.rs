@@ -2,16 +2,25 @@ use crate::model::{Comment, Container, Diagnostic, ParserResult, Unit};
 use std::collections::HashMap;
 
 pub const CONSTANTS_START_ID: i32 = 1_000_000;
+pub const FUNCTIONS_START_ID: i32 = -1_000_000;
+pub const OPERATORS: &[char] = &['+', '-', '*', '/', '=', '^', ','];
 
 pub fn default_builtins() -> HashMap<String, i32> {
     let mut m = HashMap::new();
-    let builtins = [
-        ("+", -1), ("-", -2), ("*", -3), ("/", -4), ("=", -5), ("^", -6),
-        (",", -7)
-    ];
-    for (k, v) in builtins {
-        m.insert(k.to_string(), v);
+    
+    let mut op_id = -1;
+    for &op in OPERATORS {
+        m.insert(op.to_string(), op_id);
+        op_id -= 1;
     }
+
+    let default_functions = ["sin", "cos", "tan", "log", "sqrt"];
+    let mut func_id = FUNCTIONS_START_ID;
+    for func in default_functions {
+        m.insert(func.to_string(), func_id);
+        func_id -= 1;
+    }
+
     m
 }
 
@@ -94,14 +103,24 @@ pub fn sweep<'a>(
     state.stack.push(first_line_id);
 
     // 3. State Trackers for the Loop
-    // - `active_sym`: String accumulator for the current symbol being read.
-    // - `sym_start_offset`: Where the current symbol started.
-    // - Trackers for line/col to build Spans later.
-    // - Trackers for comment states (in_comment, start_pos, text_accumulator).
+    let mut active_sym = String::new();
+    let mut sym_start_offset = 0;
+    
+    let mut line = 0;
+    let mut col = 0;
+
+    let mut in_comment = false;
+    let mut comment_text = String::new();
+    let mut comment_start_pos = crate::model::Position { offset: 0, line: 0, col: 0 };
+
+    println!("Starting sweep... root_id: {}, first_line_id: {}", root_id, first_line_id);
 
     // 4. The Sweep Loop
-    // for (offset, char) in text.char_indices() {
-        //   Calculate current Position (offset, line, col)
+    for (offset, char) in text.char_indices() {
+        let offset = offset as u32;
+        let current_pos = crate::model::Position { offset, line, col };
+        
+        println!("  [Trace] char: {:?} | offset: {} | stack_depth: {}", char, offset, state.stack.len());
 
         //   A. Comment Handling State
         //      - If currently `in_comment`, accumulate text. 
@@ -145,8 +164,13 @@ pub fn sweep<'a>(
         //      }
         
         //   D. Line/Col Maintenance
-        //      - If char == '\n', line += 1, col = 0. Else col += 1.
-    // }
+        if char == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
 
     // 5. Cleanup
     // - Flush any trailing `active_sym`.
@@ -154,5 +178,5 @@ pub fn sweep<'a>(
     // - If `stack` depth > 2, pop remaining containers and mark them `valid = false`.
 
     // 6. Return ParserResult
-    todo!("Implement the sweep")
+    state.result
 }
