@@ -1,5 +1,6 @@
 pub mod config;
 pub mod model;
+pub mod parser;
 
 use config::Config;
 use model::{EngineResult, ParserResult, TextEdit};
@@ -7,12 +8,12 @@ use std::collections::HashMap;
 
 /// Stage 1: Structural Extraction
 /// Performs the One-Pass Sweep. Returns a structural tree.
-pub fn parse(
-    _text: &str,
-    _builtins: Option<&HashMap<String, i32>>,
-    _constants: Option<&HashMap<String, i32>>,
+pub fn parse<'a>(
+    text: &str,
+    builtins: &HashMap<String, i32>,
+    constants: impl IntoIterator<Item = &'a str>,
 ) -> ParserResult {
-    unimplemented!("Parsing not yet implemented")
+    parser::sweep(text, builtins, constants)
 }
 
 /// Stage 2: Semantic Analysis & Evaluation
@@ -30,11 +31,12 @@ pub fn apply_edits(_text: &str, _edits: &[TextEdit]) -> String {
 /// Convenience Wrapper
 /// Runs the entire pipeline and returns the modified buffer and any diagnostics.
 pub fn process_buffer(text: &str, config: &Config) -> (String, Vec<model::Diagnostic>) {
-    let builtins = None; // We will inject default builtins here later
-    let constants = None;
+    let builtins = parser::default_builtins();
+    let constants = config.constants.keys().map(|s| s.as_str());
 
-    let parsed = parse(text, builtins, constants);
+    let parsed = parse(text, &builtins, constants);
     let mut engine_result = evaluate(text, &parsed, config);
+
 
     // Merge diagnostics from parsing and engine
     let mut diagnostics = parsed.diagnostics;
