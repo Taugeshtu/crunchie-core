@@ -6,6 +6,15 @@ struct ParserState {
     next_id: i32,
     stack: Vec<i32>,
     result: ParserResult,
+
+    // Omnibus State Trackers
+    active_sym: String,
+    sym_start_offset: u32,
+    line: u32,
+    col: u32,
+    in_comment: bool,
+    comment_start_pos: crate::model::Position,
+    skip_next: bool,
 }
 
 impl ParserState {
@@ -19,6 +28,13 @@ impl ParserState {
                 comments: Vec::new(),
                 diagnostics: Vec::new(),
             },
+            active_sym: String::new(),
+            sym_start_offset: 0,
+            line: 0,
+            col: 0,
+            in_comment: false,
+            comment_start_pos: crate::model::Position { offset: 0, line: 0, col: 0 },
+            skip_next: false,
         }
     }
 
@@ -47,6 +63,17 @@ impl ParserState {
             if let Some(container) = self.result.containers.get_mut(&current_id) {
                 container.contents.push(unit);
             }
+        }
+    }
+
+    /// Flushes the active symbol into the current container
+    fn flush_sym(&mut self) {
+        if !self.active_sym.is_empty() {
+            let sym = self.active_sym.clone();
+            let id = self.get_symbol_id(&sym);
+            let offset = self.sym_start_offset;
+            self.push_unit(Unit { id, offset });
+            self.active_sym.clear();
         }
     }
 }
@@ -80,73 +107,122 @@ pub fn sweep<'a>(
     state.push_unit(Unit { id: first_line_id, offset: 0 });
     state.stack.push(first_line_id);
 
-    // 3. State Trackers for the Loop
-    let mut active_sym = String::new();
-    let mut sym_start_offset = 0;
-    
-    let mut line = 0;
-    let mut col = 0;
-
-    let mut in_comment = false;
-    let mut comment_text = String::new();
-    let mut comment_start_pos = crate::model::Position { offset: 0, line: 0, col: 0 };
-
     println!("Starting sweep... root_id: {}, first_line_id: {}", root_id, first_line_id);
 
     // 4. The Sweep Loop
     for (offset, char) in text.char_indices() {
+        if state.skip_next {
+            state.skip_next = false;
+            continue;
+        }
+
         let offset = offset as u32;
-        let current_pos = crate::model::Position { offset, line, col };
+        let current_pos = crate::model::Position { offset, line: state.line, col: state.col };
         
         println!("  [Trace] char: {:?} | offset: {} | stack_depth: {}", char, offset, state.stack.len());
 
         //   A. Comment Handling State
-        //      - If currently `in_comment`, accumulate text. 
-        //      - If `\n`, finalize the comment, push to lists, reset state.
-        //      - (Note: \n still needs to be processed by the structural logic below, 
-        //        so we don't 'continue' on a newline that ends a comment).
-        
+        if state.in_comment {
+            if char == '\n' {
+                let span = crate::model::Span {
+                    start: state.comment_start_pos,
+                    end: current_pos,
+                };
+                state.result.comments.push(span);
+                state.in_comment = false;
+                // Note: We do NOT 'continue' here. The \n must also trigger 
+                // the structural logic in Block C.
+            } else {
+                // Keep accumulating. We don't actually store the text (just the Span),
+                // but we need to track line/col for the end position.
+                if char == '\n' { state.line += 1; state.col = 0; } else { state.col += 1; }
+                continue;
+            }
+        }
+
         //   B. Comment Triggers
-        //      - If `#` or `//`, flush the `active_sym`, flip `in_comment` to true, `continue`.
+        let is_slash_slash = char == '/' && text.as_bytes().get(offset as usize + 1) == Some(&b'/');
+        if char == '#' || is_slash_slash {
+            state.flush_sym();
+            
+            state.in_comment = true;
+            state.comment_start_pos = current_pos;
+            
+            if is_slash_slash {
+                state.skip_next = true;
+                state.col += 2; // Advance column for both slashes
+            } else {
+                state.col += 1;
+            }
+            continue;
+        }
 
         //   C. Structural Triggers
-        //      match char {
-        //          '(' => {
-        //              - flush `active_sym`
-        //              - Allocate new ID, create Container, push to parent's contents.
-        //              - Push new ID to stack.
-        //          }
-        //          ')' => {
-        //              - flush `active_sym`
-        //              - if stack depth > 2: pop stack.
-        //              - else: emit Diagnostic (StrayCloser).
-        //          }
-        //          '\n' | ';' => {
-        //              - flush `active_sym`
-        //              - THE TWIN RULE:
-        //                - If depth == 2 (Root level): pop line, start new line container, push to stack.
-        //                - If depth > 2 (Nested): lookup `,` operator ID, push to parent's contents.
-        //          }
-        //          ' ' | '\t' => {
-        //              - flush `active_sym` (Whitespace just ends symbols)
-        //          }
-        //          '+' | '-' | '*' | '/' | '=' | '^' | ',' => {
-        //              - flush `active_sym`
-        //              - lookup operator ID, push to parent's contents.
-        //          }
-        //          _ => {
-        //              - This is a standard character.
-        //              - If `active_sym` is empty, record `sym_start_offset`.
-        //              - Push char to `active_sym`.
-        //          }
-        //      }
+        match char {
+            '(' => {
+                state.flush_sym();
+                let new_cid = state.create_container();
+                state.push_unit(Unit { id: new_cid, offset });
+                state.stack.push(new_cid);
+            }
+            ')' => {
+                state.flush_sym();
+                if state.stack.len() > 2 {
+                    state.stack.pop();
+                } else {
+                    state.result.diagnostics.push(Diagnostic {
+                        code: crate::model::DiagnosticCode::StrayCloser,
+                        span: crate::model::Span { start: current_pos, end: current_pos },
+                    });
+                }
+            }
+            '\n' | ';' => {
+                state.flush_sym();
+                if state.stack.len() == 2 {
+                    // Root level line termination
+                    state.stack.pop();
+                    let new_line_id = state.create_container();
+                    // Root is always ID 0
+                    if let Some(root) = state.result.containers.get_mut(&0) {
+                        root.contents.push(Unit { id: new_line_id, offset });
+                    }
+                    state.stack.push(new_line_id);
+                } else {
+                    // Nested sequence marker
+                    let op_id = state.get_symbol_id(",");
+                    state.push_unit(Unit { id: op_id, offset });
+                }
+            }
+            ' ' | '\t' => {
+                state.flush_sym();
+            }
+            c if builtins::OPERATORS.contains(&c) => {
+                state.flush_sym();
+                let op_id = state.get_symbol_id(&c.to_string());
+                state.push_unit(Unit { id: op_id, offset });
+            }
+            c if builtins::ILLEGAL_CHARS.contains(&c) => {
+                state.flush_sym();
+                state.result.diagnostics.push(Diagnostic {
+                    code: crate::model::DiagnosticCode::IllegalCharacter,
+                    span: crate::model::Span { start: current_pos, end: current_pos },
+                });
+            }
+            _ => {
+                if state.active_sym.is_empty() {
+                    state.sym_start_offset = offset;
+                }
+                state.active_sym.push(char);
+            }
+        }
+
         
         //   D. Line/Col Maintenance
         if char == '\n' {
-            line += 1;
-            col = 0;
+            state.line += 1;
+            state.col = 0;
         } else {
-            col += 1;
+            state.col += 1;
         }
     }
 
