@@ -227,10 +227,40 @@ pub fn sweep<'a>(
     }
 
     // 5. Cleanup
-    // - Flush any trailing `active_sym`.
-    // - If EOF reached while `in_comment`, finalize the trailing comment.
-    // - If `stack` depth > 2, pop remaining containers and mark them `valid = false`.
+    state.flush_sym();
+
+    if state.in_comment {
+        let eof_pos = crate::model::Position { 
+            offset: text.len() as u32, 
+            line: state.line, 
+            col: state.col 
+        };
+        state.result.comments.push(crate::model::Span {
+            start: state.comment_start_pos,
+            end: eof_pos,
+        });
+    }
+
+    // Anything beyond [Root, Line] on the stack is unclosed
+    while state.stack.len() > 2 {
+        if let Some(cid) = state.stack.pop() {
+            if let Some(container) = state.result.containers.get_mut(&cid) {
+                container.valid = false;
+            }
+            
+            let eof_pos = crate::model::Position { 
+                offset: text.len() as u32, 
+                line: state.line, 
+                col: state.col 
+            };
+            state.result.diagnostics.push(Diagnostic {
+                code: crate::model::DiagnosticCode::UnclosedContainer,
+                span: crate::model::Span { start: eof_pos, end: eof_pos },
+            });
+        }
+    }
 
     // 6. Return ParserResult
     state.result
 }
+
