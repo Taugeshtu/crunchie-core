@@ -1,4 +1,4 @@
-use crate::model::{Comment, Container, Diagnostic, ParserResult, Unit};
+use crate::model::{Container, Diagnostic, ParserResult, Unit};
 use crate::builtins;
 use std::collections::HashMap;
 
@@ -107,8 +107,6 @@ pub fn sweep<'a>(
     state.push_unit(Unit { id: first_line_id, offset: 0 });
     state.stack.push(first_line_id);
 
-    println!("Starting sweep... root_id: {}, first_line_id: {}", root_id, first_line_id);
-
     // 4. The Sweep Loop
     for (offset, char) in text.char_indices() {
         if state.skip_next {
@@ -118,8 +116,6 @@ pub fn sweep<'a>(
 
         let offset = offset as u32;
         let current_pos = crate::model::Position { offset, line: state.line, col: state.col };
-        
-        println!("  [Trace] char: {:?} | offset: {} | stack_depth: {}", char, offset, state.stack.len());
 
         //   A. Comment Handling State
         if state.in_comment {
@@ -216,7 +212,6 @@ pub fn sweep<'a>(
             }
         }
 
-        
         //   D. Line/Col Maintenance
         if char == '\n' {
             state.line += 1;
@@ -263,4 +258,3 @@ pub fn sweep<'a>(
     // 6. Return ParserResult
     state.result
 }
-
