@@ -72,3 +72,60 @@ pub struct EngineResult {
     pub edits: Vec<TextEdit>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpCode {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+    Assign,
+    Sequence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CoupledUnit {
+    /// A physical quantity (value + optional unit)
+    Quantity { value: f64, unit: Option<String> },
+    /// A named binding, optionally with a requested unit (e.g. "x kg")
+    Binding {
+        name: String,
+        request_unit: Option<String>,
+    },
+    /// A function call (e.g. "sin")
+    Function(String),
+    /// A mathematical operator
+    Operator(OpCode),
+    /// A nested group of units (e.g. from parentheses)
+    Group(Vec<CoupledUnit>),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoupledResult {
+    pub lines: Vec<Vec<CoupledUnit>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Operand {
+    /// A direct physical quantity
+    Literal { value: f64, unit: Option<String> },
+    /// A reference to the result of a previous instruction on the Tape
+    Register(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Instruction {
+    pub op: OpCode,
+    pub args: Vec<Operand>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Tape {
+    pub instructions: Vec<Instruction>,
+    /// Maps Instruction Index -> (Variable Name, Requested Unit)
+    pub assignments: HashMap<usize, (String, Option<String>)>,
+    /// List of Instruction Indices that represent queries (e.g. "x = ")
+    pub queries: Vec<usize>,
+}
+
