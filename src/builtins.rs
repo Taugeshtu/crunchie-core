@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub const OPERATORS: &[char] = &['+', '-', '*', '/', '=', '^', ','];
+pub const OPERATORS: &[char] = &['+', '-', '*', '/', '=', '^', ',', ';', '\n'];
 pub const FUNCTIONS: &[&str] = &["sin", "cos", "tan", "log", "sqrt"];
 pub const ILLEGAL_CHARS: &[char] = &['~', '`', '@', '[', ']', '{', '}', '\\', '|'];
 

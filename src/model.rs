@@ -43,6 +43,7 @@ pub enum DiagnosticCode {
     StrayCloser,
     UnclosedContainer,
     IllegalCharacter,
+    StraySequence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

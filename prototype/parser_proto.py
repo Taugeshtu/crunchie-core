@@ -168,7 +168,7 @@ def sweep(text: str, builtins: Dict[str, int] = None, constants: Dict[str, int] 
                 stack.append(new_line_id)
             else:
                 # Nested sequence marker
-                op_id = get_symbol_id(',')
+                op_id = get_symbol_id(char)
                 containers[stack[-1]].contents.append(Unit(id=op_id, offset=offset))
                 
         elif char in SEPARATORS:
@@ -241,10 +241,10 @@ def run_tests():
         ("3 + (1 + 2)", ([["3", "+", ["1", "+", "2"]]], [])),
         ("x = 5 # comment", ([["x", "=", "5"]], [" comment"])),
         ("x=1; y=2", ([["x", "=", "1"], ["y", "=", "2"]], [])),
-        ("z = (3, 5\n 7)", ([["z", "=", ["3", ",", "5", ",", "7"]]], [])),
-        ("z = (3; 5)", ([["z", "=", ["3", ",", "5"]]], [])),
+        ("z = (3, 5\n 7)", ([["z", "=", ["3", ",", "5", "\n", "7"]]], [])),
+        ("z = (3; 5)", ([["z", "=", ["3", ";", "5"]]], [])),
         ("outer = (\n    1 + 1, // first\n    (2 + 2) # second\n)", 
-         ([["outer", "=", [",", "1", "+", "1", ",", ",", ["2", "+", "2"], ","]]], 
+         ([["outer", "=", ["\n", "1", "+", "1", ",", "\n", ["2", "+", "2"], "\n"]]], 
           [" first", " second"])),
         ("x = (5 6)", ([["x", "=", ["5", "6"]]], [])),
         ("-5", ([["-", "5"]], [])),

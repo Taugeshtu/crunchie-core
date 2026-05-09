@@ -185,7 +185,7 @@ pub fn sweep<'a>(
                     state.stack.push(new_line_id);
                 } else {
                     // Nested sequence marker
-                    let op_id = state.get_symbol_id(",");
+                    let op_id = state.get_symbol_id(&char.to_string());
                     state.push_unit(Unit { id: op_id, offset });
                 }
             }
