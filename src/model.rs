@@ -59,3 +59,16 @@ pub struct ParserResult {
     pub comments: Vec<Comment>,
     pub diagnostics: Vec<Diagnostic>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextEdit {
+    pub span: Span,
+    pub new_text: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineResult {
+    pub diagnostics: Vec<Diagnostic>,
+    pub edits: Vec<TextEdit>,
+}
+
