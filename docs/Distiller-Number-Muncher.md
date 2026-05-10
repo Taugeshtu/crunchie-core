@@ -1,14 +1,14 @@
 # Distiller Sub-Routine: The Number Muncher
 
 ## The Problem
-Because the parser is "brainless", it groups adjacent characters into single strings (Symbols) until it hits an explicit separator (like a space) or an operator. This means `10cm3`, `1_000_356kg`, `5M`, and `0xABCDFFm` arrive at the Distiller as monolithic strings. 
+Because the parser is "brainless", it groups adjacent characters into single strings (`Symbol::Raw`) until it hits an explicit separator (like a space) or an operator. This means `10cm3`, `1_000_356kg`, `5M`, and `0xABCDFFm` arrive at the Distiller as monolithic strings. 
 
-The Distiller processes symbols in order: Operator? Constant? Function? If a symbol is none of these, the Distiller throws its hands up and says, *"Okay, Muncher, what the fuck is it??"*
+The Distiller processes symbols. If a symbol is raw, the Distiller throws its hands up and says, *"Okay, Muncher, what the fuck is it??"*
 
-The Number Muncher is a dedicated function that takes this raw, unclassified string and returns one or more fully-typed semantic units (or a `Poison` symbol of error).
+The Number Muncher is a dedicated function that takes this raw, unclassified string and returns one or more fully-typed `Symbol` variants (or a `Poison` symbol on error).
 
 ## Contract
-`fn munch(symbol: &str, known_units: &HashSet<String>) -> Vec<SemanticUnit>`
+`fn munch(symbol: &str, known_units: &HashSet<String>) -> Vec<Symbol>`
 
 ## Algorithm
 
@@ -27,7 +27,7 @@ The Muncher is a strict, left-to-right character consumer. It attempts to build 
 
 ### Phase 2: Numeric Evaluation
 If a `Number String` was successfully isolated, the Muncher attempts to parse it into an `f64`.
-*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[SemanticUnit::Poison]`. The engine will flag this with an `MalformedNumber` diagnostic.
+*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[Symbol::Poison]`. The engine will flag this with an `MalformedNumber` diagnostic.
 *   If the parse succeeds, we now hold a valid `f64` value.
 
 ### Phase 3: Suffix Resolution & Expansion
@@ -39,11 +39,11 @@ Now the Muncher analyzes the `Suffix String` (if any exists) against the Numbat 
 4. **Power Suffix Expansion (The `cm3` Rule)**: 
     *   If the suffix ends in a single digit (`2`, `3`, `4`, or `5`), split the suffix into a `prefix` ("cm") and a `power` (3).
     *   If the `prefix` exists in `known_units`, expand the syntax! Return `[Quantity(val), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
-5. **The "Garbage" Fallback**: If the suffix is "garbage" (e.g., `kg123`, `daysofstatic`) and a `Number String` was already consumed, the Muncher aborts. Return `[SemanticUnit::Poison]` and append a `MalformedSymbol` diagnostic. If there was *no* number to begin with (e.g., the original symbol was just `x`), treat the whole string as an identifier. Return `[Variable("x")]`.
+5. **The "Garbage" Fallback**: If the suffix is "garbage" (e.g., `kg123`, `daysofstatic`) and a `Number String` was already consumed, the Muncher aborts. Return `[Symbol::Poison]` and append a `MalformedSymbol` diagnostic. If there was *no* number to begin with (e.g., the original symbol was just `x`), treat the whole string as an identifier. Return `[Variable("x")]`.
 
 ## Handling the "Cute Cursed" Cases
 Because the Muncher is a complete function that resolves semantics, it handles edge cases perfectly:
 *   **Case: `10cm3`** -> Munch isolates `10` and `cm3`. `cm3` expands. Returns `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
-*   **Case: `65kg123`** -> Munch isolates `65` and `kg123`. `kg123` is not a valid unit or multiplier. Returns `[SemanticUnit::Poison]` (Diagnostic: `MalformedSymbol`).
+*   **Case: `65kg123`** -> Munch isolates `65` and `kg123`. `kg123` is not a valid unit or multiplier. Returns `[Symbol::Poison]` (Diagnostic: `MalformedSymbol`).
 *   **Case: `5M`** -> Munch isolates `5` and `M`. Returns `[Quantity(5_000_000)]`.
 *   **Case: `x`** -> Munch isolates no number. Returns `[Variable("x")]`.
