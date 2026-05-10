@@ -105,6 +105,9 @@ The Distiller processes the cleaned contents of a single container at a time. It
 *   **Case: Conversion Operator**
     *   `Input`: `(x, to, cm)`
     *   `Output`: `[Variable("x"), Operator(To), PhysUnit("cm")]`
+*   **Case: Query Assignment**
+    *   `Input`: `(x, =)`
+    *   `Output`: `[Variable("x"), Operator(Assign)]`
 
 ---
 
@@ -136,6 +139,11 @@ The Unroller flattens the hierarchical SemanticUnits into a linear "Tape" of ins
         *   `r2 = Add(r0, r1)`
         *   `r3 = To(value: r2, target_unit: "mm")`
         *   `Assign(target: "y", value: r3)`
+*   **Case 4: Query Assignment**
+    *   `Input`: `[Variable("x"), Operator(Assign)]`
+    *   `Logic`: The Unroller sees an assignment with a missing right-hand side. It emits the instruction for the Executioner to handle as a "Query".
+    *   `Output Tape`:
+        *   `Query(target: "x")`
 
 ---
 
