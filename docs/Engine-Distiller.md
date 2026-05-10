@@ -18,7 +18,7 @@ The Distiller acts as the semantic bridge. It is purely a **typization** stage. 
     *   `PhysUnit`: A valid standalone physical unit recognized by the Numbat registry.
     *   `Function`: A mathematical function (e.g., sin, sqrt).
     *   `Operator`: Structural and mathematical tokens (+, -, =, to, etc.).
-    *   `Poison`: A symbol of error injected when typization fatally fails (e.g., malformed numbers).
+    *   `Poison`: A symbol of error injected when typization fatally fails (e.g., malformed numbers or invalid alphanumeric monoliths).
 *   **Refinement**: Enriches the topological containers by translating their raw IDs into semantic `SemanticUnit`s, preserving the original groupings and lines for the Unroller.
 
 ## Algorithm
@@ -38,6 +38,6 @@ When it encounters a Symbol ID, it retrieves the original string and categorizes
 4.  **The Muncher Fallback**: If the symbol is none of the above, the Distiller delegates it to the `munch` function (see `Distiller-Number-Muncher.md`). 
     *   Because the parser is "brainless" and treats text like `5cm` as a single symbol if there are no spaces, the Muncher is responsible for splitting alphanumeric strings, expanding implicit exponents, applying SI multipliers, and resolving units.
     *   The Muncher returns a `Vec<SemanticUnit>` (e.g., `[Quantity(5), PhysUnit("cm")]`) which is spliced directly into the Distiller's growing sequence.
-    *   **The Poison Fallback**: If the Muncher fatally fails (e.g., trying to parse `1.2.3`), it appends an `InvalidNumber` diagnostic and emits `SemanticUnit::Poison` into the stream.
+    *   **The Poison Fallback**: If the Muncher fatally fails (e.g., trying to parse `1.2.3` or failing a "Strict Monolith" rule like `65kg123`), it appends a diagnostic (`InvalidNumber` or `MalformedSymbol`) and emits `SemanticUnit::Poison` into the stream.
 
 *Note: Once this list is built, the Distiller's job is done. It passes the resulting list directly to the Unroller. Any ambiguity about how a `Quantity` interacts with a neighboring `PhysUnit` is resolved by the Unroller's implicit multiplication rules.*

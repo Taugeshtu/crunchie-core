@@ -39,11 +39,11 @@ Now the Muncher analyzes the `Suffix String` (if any exists) against the Numbat 
 4. **Power Suffix Expansion (The `cm3` Rule)**: 
     *   If the suffix ends in a single digit (`2`, `3`, `4`, or `5`), split the suffix into a `prefix` ("cm") and a `power` (3).
     *   If the `prefix` exists in `known_units`, expand the syntax! Return `[Quantity(val, None), PhysUnit("cm"), Operator(Pow), Quantity(3, None)]`.
-5. **The "Garbage" Fallback**: If it's none of the above (e.g., `kg123`, `daysofstatic`), or if there was no number to begin with (e.g., the original symbol was just `x`), treat the suffix as an identifier. Return `[Quantity(val, None), Variable("suffix")]`. (If there was no number, just return `[Variable("suffix")]`).
+5. **The "Garbage" Fallback**: If the suffix is "garbage" (e.g., `kg123`, `daysofstatic`) and a `Number String` was already consumed, the Muncher aborts. Return `[SemanticUnit::Poison]` and append a `MalformedSymbol` diagnostic. If there was *no* number to begin with (e.g., the original symbol was just `x`), treat the whole string as an identifier. Return `[Variable("x")]`.
 
 ## Handling the "Cute Cursed" Cases
 Because the Muncher is a complete function that resolves semantics, it handles edge cases perfectly:
 *   **Case: `10cm3`** -> Munch isolates `10` and `cm3`. `cm3` expands. Returns `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
-*   **Case: `65kg123`** -> Munch isolates `65` and `kg123`. `kg123` ends in `3`, but `kg12` is not a unit. `kg123` is not a unit. Returns `[Quantity(65), Variable("kg123")]`. (The Unroller will later throw a missing operator error between the quantity and the variable).
+*   **Case: `65kg123`** -> Munch isolates `65` and `kg123`. `kg123` is not a valid unit or multiplier. Returns `[SemanticUnit::Poison]` (Diagnostic: `MalformedSymbol`).
 *   **Case: `5M`** -> Munch isolates `5` and `M`. Returns `[Quantity(5_000_000)]`.
 *   **Case: `x`** -> Munch isolates no number. Returns `[Variable("x")]`.

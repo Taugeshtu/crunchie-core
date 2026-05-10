@@ -89,7 +89,7 @@ The Distiller processes the cleaned contents of a single container at a time. It
     *   `Output`: `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`
 *   **Case: Muncher (Quantity + Identifier)**
     *   `Input`: `(65kg123)`
-    *   `Output`: `[Quantity(65), Variable("kg123")]`
+    *   `Output`: `[Poison]` *(Diagnostic: MalformedSymbol)*
 *   **Case: Muncher (Hexadecimal)**
     *   `Input`: `(0xFF)`
     *   `Output`: `[Quantity(255)]`
