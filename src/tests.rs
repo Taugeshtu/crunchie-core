@@ -3,58 +3,49 @@ use std::collections::HashMap;
 
 /// Helper to turn the flat topology back into nested vectors for easy assertions,
 /// matching the logic from the Python prototype's `reconstruct` function.
+fn resolve_symbol(id: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> serde_json::Value {
+    match workspace.symbols.get(&id) {
+        Some(model::Symbol::ContainerRef(child_cid)) => {
+            serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern))
+        }
+        Some(model::Symbol::Quantity(q)) => serde_json::Value::String(format!("Q:{}", q)),
+        Some(model::Symbol::Variable(v)) => serde_json::Value::String(format!("V:{}", v)),
+        Some(model::Symbol::PhysUnit(u)) => serde_json::Value::String(format!("U:{}", u)),
+        Some(model::Symbol::Operator(op)) => serde_json::Value::String(format!("O:{:?}", op)),
+        Some(model::Symbol::Constant(c)) => serde_json::Value::String(format!("C:{}", c)),
+        Some(model::Symbol::Function(f)) => serde_json::Value::String(format!("F:{}", f)),
+        Some(model::Symbol::Instruction { op, args }) => {
+            let arg_strs: Vec<String> = args.iter().map(|&aid| {
+                match resolve_symbol(aid, workspace, reverse_intern) {
+                    serde_json::Value::String(s) => s,
+                    _ => "?".to_string()
+                }
+            }).collect();
+            serde_json::Value::String(format!("I:{:?}({})", op, arg_strs.join(", ")))
+        }
+        Some(model::Symbol::Poison) => serde_json::Value::String("POISON".to_string()),
+        Some(model::Symbol::Raw(s)) => serde_json::Value::String(format!("R:{}", s)),
+        _ => serde_json::Value::String(reverse_intern.get(&id).cloned().unwrap_or_else(|| {
+            format!("?{}?", id)
+        })),
+    }
+}
+
+fn resolve_container(cid: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> Vec<serde_json::Value> {
+    let mut res = Vec::new();
+    if let Some(container) = workspace.containers.get(&cid) {
+        for entity in &container.contents {
+            res.push(resolve_symbol(entity.id, workspace, reverse_intern));
+        }
+    }
+    res
+}
+
 fn reconstruct(workspace: &Workspace) -> Vec<serde_json::Value> {
-    // Create a reverse lookup for symbols using intern_map and fallback to symbols map
     let mut reverse_intern = HashMap::new();
     for (k, &v) in &workspace.intern_map {
         reverse_intern.insert(v, k.clone());
     }
-
-    fn resolve_container(cid: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> Vec<serde_json::Value> {
-        let mut res = Vec::new();
-        if let Some(container) = workspace.containers.get(&cid) {
-            for entity in &container.contents {
-                match workspace.symbols.get(&entity.id) {
-                    Some(model::Symbol::ContainerRef(child_cid)) => {
-                        res.push(serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern)));
-                    }
-                    Some(model::Symbol::Quantity(q)) => {
-                        res.push(serde_json::Value::String(format!("Q:{}", q)));
-                    }
-                    Some(model::Symbol::Variable(v)) => {
-                        res.push(serde_json::Value::String(format!("V:{}", v)));
-                    }
-                    Some(model::Symbol::PhysUnit(u)) => {
-                        res.push(serde_json::Value::String(format!("U:{}", u)));
-                    }
-                    Some(model::Symbol::Operator(op)) => {
-                        res.push(serde_json::Value::String(format!("O:{:?}", op)));
-                    }
-                    Some(model::Symbol::Constant(c)) => {
-                        res.push(serde_json::Value::String(format!("C:{}", c)));
-                    }
-                    Some(model::Symbol::Function(f)) => {
-                        res.push(serde_json::Value::String(format!("F:{}", f)));
-                    }
-                    Some(model::Symbol::Poison) => {
-                        res.push(serde_json::Value::String("POISON".to_string()));
-                    }
-                    Some(model::Symbol::Raw(s)) => {
-                        res.push(serde_json::Value::String(format!("R:{}", s)));
-                    }
-                    _ => {
-                        let sym_str = reverse_intern.get(&entity.id).cloned().unwrap_or_else(|| {
-                            format!("?{}?", entity.id)
-                        });
-                        res.push(serde_json::Value::String(sym_str));
-                    }
-                }
-            }
-        }
-        res
-    }
-
-    // Root is always ID 0
     resolve_container(0, workspace, &reverse_intern)
 }
 
@@ -152,6 +143,33 @@ fn test_janitor_cases() {
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
         
         assert_eq!(reconstructed, expected_value, "Failed on janitor input: {:?}", input);
+    }
+}
+
+#[test]
+fn test_unroller_basics() {
+    let cases = [
+        ("1 + 2 * 3", r#"[["I:Mul(Q:2, Q:3)", "I:Add(Q:1, I:Mul(Q:2, Q:3))"]]"#),
+        ("5 cm", r#"[["I:Mul(Q:5, U:cm)"]]"#),
+        ("x = 5", r#"[["I:Assign(V:x, Q:5)"]]"#),
+        ("x = ", r#"[["I:Assign(V:x)"]]"#),
+        ("sin(PI)", r#"[["I:Call(F:sin, C:PI)"]]"#),
+    ];
+
+    let builtins = builtins::generate_symbol_map();
+    let config = config::Config::default();
+    let constants = config.constants.keys().map(|s| s.as_str());
+
+    for (input, expected_json) in cases {
+        let mut workspace = parse(input, &builtins, constants.clone());
+        janitor(&mut workspace);
+        distiller(&mut workspace);
+        unroller(&mut workspace);
+        
+        let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
+        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
+        
+        assert_eq!(reconstructed, expected_value, "Failed on unroller input: {:?}", input);
     }
 }
 

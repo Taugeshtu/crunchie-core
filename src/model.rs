@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Position {
     pub offset: u32,
     pub line: u32,
@@ -54,6 +54,7 @@ pub enum OpCode {
     Assign,
     Sequence,
     To,
+    Call,
 }
 
 #[derive(Debug, Clone)]
@@ -152,5 +153,10 @@ pub enum Symbol {
     
     // --- Stage 3: Minted by the Vectorizer (Aspiration) ---
     /// Evaluated from ContainerRef during the vectorization pass
-    VectorRef(i32),    
+    VectorRef(i32),
+    /// Stage 3: Minted by the Unroller
+    Instruction {
+        op: OpCode,
+        args: Vec<i32>,
+    },
 }

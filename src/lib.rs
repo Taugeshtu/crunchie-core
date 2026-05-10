@@ -4,6 +4,7 @@ pub mod parser;
 pub mod builtins;
 pub mod janitor;
 pub mod distiller;
+pub mod unroller;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
@@ -34,13 +35,9 @@ pub fn distiller(workspace: &mut Workspace) {
 
 /// Stage 2.3: The Unroller
 /// Flattens the nested hierarchy into a linear "Tape" of instructions.
-// pub fn unroller(_workspace: &mut Workspace) -> model::Tape {
-//     model::Tape {
-//         instructions: Vec::new(),
-//         assignments: HashMap::new(),
-//         queries: Vec::new(),
-//     } // Stub
-// }
+pub fn unroller(workspace: &mut Workspace) {
+    unroller::unroll(workspace);
+}
 
 /// Stage 2.4: The Executioner
 /// Final pass that performs the actual computation.
@@ -53,8 +50,8 @@ pub fn distiller(workspace: &mut Workspace) {
 pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config) -> EngineResult {
     janitor(workspace);
     distiller(workspace);
-    // let tape = unroller(workspace);
-    // executioner(tape, config)
+    unroller(workspace);
+    // executioner(workspace, config)
     EngineResult::default()
 }
 
