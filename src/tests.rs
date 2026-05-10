@@ -32,14 +32,16 @@ fn reconstruct(result: &ParserResult) -> Vec<serde_json::Value> {
 #[test]
 fn test_parser_cases() {
     let cases = [
-        ("5", r#"[["5"]]"#),
-        ("x = 5", r#"[["x", "=", "5"]]"#),
-        ("3 + (1 + 2)", r#"[["3", "+", ["1", "+", "2"]]]"#),
-        ("x = 5 # comment", r#"[["x", "=", "5"]]"#),
-        ("x=1; y=2", r#"[["x", "=", "1"], ["y", "=", "2"]]"#),
-        ("z = (3, 5\n 7)", r#"[["z", "=", ["3", ",", "5", "\n", "7"]]]"#),
-        ("z = (3; 5)", r#"[["z", "=", ["3", ";", "5"]]]"#),
-        ("-5", r#"[["-", "5"]]"#),
+        ("5", r#"["5"]"#),
+        ("x = 5", r#"["x", "=", "5"]"#),
+        ("3 + (1 + 2)", r#"["3", "+", ["1", "+", "2"]]"#),
+        ("x = 5 # comment", r#"["x", "=", "5"]"#),
+        ("x=1; y=2", r#"["x", "=", "1", ";", "y", "=", "2"]"#),
+        ("z = (3, 5\n 7)", r#"["z", "=", ["3", ",", "5", "\n", "7"]]"#),
+        ("z = (3; 5)", r#"["z", "=", ["3", ";", "5"]]"#),
+        ("-5", r#"["-", "5"]"#),
+        ("x += 5", r#"["x", "+=", "5"]"#),
+        ("10 to cm", r#"["10", "to", "cm"]"#),
     ];
 
     let builtins = builtins::generate_symbol_map();
@@ -59,8 +61,8 @@ fn test_unclosed_container() {
     let builtins = builtins::generate_symbol_map();
     let result = parse("x = (5", &builtins, std::iter::empty::<&str>());
     
-    // Check that the nested container (ID 3) is marked corrupted
-    let container = result.containers.get(&3).unwrap();
+    // Find the dynamically created nested container (which will be the only one besides Root ID 0)
+    let (_, container) = result.containers.iter().find(|(id, _)| **id != 0).unwrap();
     assert!(container.corrupted);
     assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::UnclosedContainer)));
 }

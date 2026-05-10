@@ -25,13 +25,13 @@ pub fn janitor(raw: ParserResult) -> ParserResult {
 
 /// Stage 2.2: The Distiller
 /// Assigns roles to symbols and marries values to their units.
-pub fn distiller(_cleaned: ParserResult) -> model::CoupledResult {
-    model::CoupledResult { lines: Vec::new() } // Stub
+pub fn distiller(_cleaned: ParserResult) -> model::SemanticResult {
+    model::SemanticResult { lines: Vec::new() } // Stub
 }
 
 /// Stage 2.3: The Unroller
 /// Flattens the nested hierarchy into a linear "Tape" of instructions.
-pub fn unroller(_coupled: model::CoupledResult) -> model::Tape {
+pub fn unroller(_semantic: model::SemanticResult) -> model::Tape {
     model::Tape {
         instructions: Vec::new(),
         assignments: HashMap::new(),
@@ -51,8 +51,8 @@ pub fn evaluate(_text: &str, parsed: &ParserResult, config: &Config) -> EngineRe
     // For now, we clone 'parsed' to pass it to the janitor since evaluate takes a reference.
     // In the future, evaluate might be refactored or its sub-stages might take references.
     let cleaned = janitor(parsed.clone());
-    let coupled = distiller(cleaned);
-    let tape = unroller(coupled);
+    let semantic = distiller(cleaned);
+    let tape = unroller(semantic);
     executioner(tape, config)
 }
 

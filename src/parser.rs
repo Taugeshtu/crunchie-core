@@ -15,6 +15,7 @@ struct ParserState {
     in_comment: bool,
     comment_start_pos: crate::model::Position,
     skip_next: bool,
+    skip_bytes: usize,
 }
 
 impl ParserState {
@@ -35,6 +36,7 @@ impl ParserState {
             in_comment: false,
             comment_start_pos: crate::model::Position { offset: 0, line: 0, col: 0 },
             skip_next: false,
+            skip_bytes: 0,
         }
     }
 
@@ -99,16 +101,16 @@ pub fn sweep<'a>(
     // 2. Bootstrapping the Root
     let root_id = 0;
     state.result.containers.insert(root_id, Container::default());
-    
-    let first_line_id = state.create_container();
-    
-    // Push the line into the root, then push both to stack
     state.stack.push(root_id);
-    state.push_unit(Unit { id: first_line_id, offset: 0 });
-    state.stack.push(first_line_id);
 
     // 4. The Sweep Loop
     for (offset, char) in text.char_indices() {
+        if state.skip_bytes > 0 {
+            state.skip_bytes = state.skip_bytes.saturating_sub(char.len_utf8());
+            if char == '\n' { state.line += 1; state.col = 0; } else { state.col += 1; }
+            continue;
+        }
+
         if state.skip_next {
             state.skip_next = false;
             continue;
@@ -163,7 +165,7 @@ pub fn sweep<'a>(
             }
             ')' => {
                 state.flush_sym();
-                if state.stack.len() > 2 {
+                if state.stack.len() > 1 {
                     state.stack.pop();
                 } else {
                     state.result.diagnostics.push(Diagnostic {
@@ -172,30 +174,8 @@ pub fn sweep<'a>(
                     });
                 }
             }
-            '\n' | ';' => {
-                state.flush_sym();
-                if state.stack.len() == 2 {
-                    // Root level line termination
-                    state.stack.pop();
-                    let new_line_id = state.create_container();
-                    // Root is always ID 0
-                    if let Some(root) = state.result.containers.get_mut(&0) {
-                        root.contents.push(Unit { id: new_line_id, offset });
-                    }
-                    state.stack.push(new_line_id);
-                } else {
-                    // Nested sequence marker
-                    let op_id = state.get_symbol_id(&char.to_string());
-                    state.push_unit(Unit { id: op_id, offset });
-                }
-            }
             ' ' | '\t' => {
                 state.flush_sym();
-            }
-            c if builtins::OPERATORS.contains(&c) => {
-                state.flush_sym();
-                let op_id = state.get_symbol_id(&c.to_string());
-                state.push_unit(Unit { id: op_id, offset });
             }
             c if builtins::ILLEGAL_CHARS.contains(&c) => {
                 state.flush_sym();
@@ -205,10 +185,18 @@ pub fn sweep<'a>(
                 });
             }
             _ => {
-                if state.active_sym.is_empty() {
-                    state.sym_start_offset = offset;
+                let remaining = &text[offset as usize..];
+                if let Some(&op) = builtins::PUNCTUATION_OPERATORS.iter().find(|&&op| remaining.starts_with(op)) {
+                    state.flush_sym();
+                    let op_id = state.get_symbol_id(op);
+                    state.push_unit(Unit { id: op_id, offset });
+                    state.skip_bytes = op.len() - char.len_utf8();
+                } else {
+                    if state.active_sym.is_empty() {
+                        state.sym_start_offset = offset;
+                    }
+                    state.active_sym.push(char);
                 }
-                state.active_sym.push(char);
             }
         }
 
@@ -236,8 +224,8 @@ pub fn sweep<'a>(
         });
     }
 
-    // Anything beyond [Root, Line] on the stack is unclosed
-    while state.stack.len() > 2 {
+    // Anything beyond [Root] on the stack is unclosed
+    while state.stack.len() > 1 {
         if let Some(cid) = state.stack.pop() {
             if let Some(container) = state.result.containers.get_mut(&cid) {
                 container.corrupted = true;

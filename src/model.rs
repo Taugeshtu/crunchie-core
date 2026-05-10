@@ -82,28 +82,32 @@ pub enum OpCode {
     Pow,
     Assign,
     Sequence,
+    To,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum CoupledUnit {
-    /// A physical quantity (value + optional unit)
-    Quantity { value: f64, unit: Option<String> },
-    /// A named binding, optionally with a requested unit (e.g. "x kg")
-    Binding {
-        name: String,
-        request_unit: Option<String>,
-    },
+pub enum SemanticUnit {
+    /// A numeric literal
+    Quantity(f64),
+    /// A named identifier
+    Variable(String),
+    /// A pre-seeded mathematical constant (e.g. PI, TAU)
+    Constant(String),
+    /// A standalone physical unit (e.g. kg)
+    PhysUnit(String),
     /// A function call (e.g. "sin")
     Function(String),
     /// A mathematical operator
     Operator(OpCode),
-    /// A nested group of units (e.g. from parentheses)
-    Group(Vec<CoupledUnit>),
+    /// A nested group of units
+    Group(Vec<SemanticUnit>),
+    /// A symbol of error injected when typization fatally fails
+    Poison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CoupledResult {
-    pub lines: Vec<Vec<CoupledUnit>>,
+pub struct SemanticResult {
+    pub lines: Vec<Vec<SemanticUnit>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

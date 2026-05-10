@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-pub const OPERATORS: &[char] = &['+', '-', '*', '/', '=', '^', ',', ';', '\n'];
+pub const PUNCTUATION_OPERATORS: &[&str] = &[
+    "+=", "-=", ">=", "<=", "==", "!=", ">>", "<<",
+    "+", "-", "*", "/", "=", "^", ",", ";", "\n"
+];
+pub const ALPHANUMERIC_OPERATORS: &[&str] = &["to"];
 pub const FUNCTIONS: &[&str] = &["sin", "cos", "tan", "log", "sqrt"];
 pub const ILLEGAL_CHARS: &[char] = &['~', '`', '@', '[', ']', '{', '}', '\\', '|'];
 
@@ -14,8 +18,13 @@ pub fn generate_symbol_map() -> HashMap<String, i32> {
     let mut m = HashMap::new();
     
     let mut op_id = -1;
-    for &op in OPERATORS {
+    for &op in PUNCTUATION_OPERATORS {
         m.insert(op.to_string(), op_id);
+        op_id -= 1;
+    }
+
+    for &kw in ALPHANUMERIC_OPERATORS {
+        m.insert(kw.to_string(), op_id);
         op_id -= 1;
     }
 
