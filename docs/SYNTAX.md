@@ -1,52 +1,41 @@
-# Crunchie Syntax: Structural Specification
+# Crunchie Grammar Guide
 
-Crunchie uses a minimalist, "One-Pass Sweep" grammar designed for high-performance structural extraction.
+This document outlines how to write math in Crunchie. Crunchie is designed to be a "Conversation with a Buffer," meaning the syntax is minimal and focused on readability.
 
-## 1. The Unified Identity Space
-The parser treats the buffer as a stream of **Units** identified by unique IDs.
-- **Symbols**: Text literals (identifiers, numbers, units).
-- **Operators**: Self-breaking characters (`+`, `-`, `*`, `/`, `=`, `^`).
-- **Containers**: Groups of units, starting with the implicit **Root Container** (ID: 0).
+## 1. Numbers and Units
+Crunchie understands physical units natively. You can write them together or separately:
+*   `10m + 50 cm`
+*   `5 kg * 2`
+*   `0xFF` (Hexadecimal)
+*   `0b0010_1000` (Binary, and also underscore for visual separation)
+*   `1e-5` (Scientific notation)
+*   `3 cm^2 + 1 cm2` (shorthand "unit raised to power" supports powers of 2, 3, 4, 5)
+*   `3k + 5K + 1M` (scale suffixes, only `k`/`K` and `M`)
 
-## 2. Structural Triggers
+## 2. Variables and Constants
+Assign values to names to reuse them later.
+*   `radius = 10cm`
+*   `area = PI * radius^2`
+*   `x = 5; y = 10` (Multiple statements on one line)
 
-### Containment
-- **`(`**: Starts a new nested container. Increases stack depth.
-- **`)`**: Closes the current container. Decreases stack depth.
-  - *Malformed*: A `)` at Root (Depth 1) is a stray error. A container that never sees a `)` before EOF is marked `.valid = false`.
+## 3. Grouping
+Use parentheses to control the order of operations.
+*   `5 * (2 + 3)`
 
-### The "Twin Rule" (Boundaries vs. Sequence Operators)
-The characters `\n` (Newline) and `;` (Semicolon) are functional twins. Their behavior depends strictly on **Stack Depth**:
-
-| Context | Action | Behavior |
-| :--- | :--- | :--- |
-| **Root (Depth 1)** | **Boundary Trigger** | Ends the current "Line" container and starts a new one. |
-| **Nested (Depth 2+)** | **Sequence Operator** | Acts exactly like a comma. The parser homogenizes them and explicitly emits a `,` operator unit. |
-
-### Separators vs Sequence Operators
-- **Whitespace (Space, Tab)**: Simply ends the current Symbol/Operator and is completely discarded.
-- **Sequence Operators (Comma, Nested Newline, Nested Semicolon)**: End the current Symbol/Operator AND are interned as a structural unit (the `,` operator). 
-
-This distinction allows the Engine to detect missing sequence operators. For example, `(5, 6)` is parsed as `[5, ",", 6]`, which is valid. But `(5 6)` is parsed as `[5, 6]`, allowing the Engine to flag the missing comma.
-
-### Unary Operators
-The parser is strictly structural and does not group unary operators. For example, `-5` is parsed as two distinct units: the `-` operator and the `5` symbol. The Engine resolves unary logic based on adjacency during the semantic pass.
-
-### Illegal Characters
-The parser explicitly forbids certain characters to reserve them for future use or to prevent ambiguity. Encountering these will emit an `IllegalCharacter` diagnostic, but will not crash the parser.
-Forbidden characters: `~`, `` ` ``, `@`, `[`, `]`, `{`, `}`, `\`, `|`.
-
-## 3. Semantic Intent (Engine Layer)
-The syntax is purely structural. The **Engine** determines meaning based on the contents of containers:
-- `x = 10` -> Assignment (If `x` is new or reassignment is enabled).
-- `10 + 5 = 15` -> Assertion.
-- `10 + 5 = ` -> Query/Fill.
-
-## 4. Reassignment & Poisoning
-- **Reassignment**: Allowed by default but triggers a `Warning` diagnostic. Can be configured to error.
-- **Poisoning**: If a container is marked `.valid = false` (unclosed), any symbol defined using that container is "Poisoned." Downstream expressions referencing poisoned symbols will not evaluate, but independent expressions remain valid.
+## 4. Physical Conversions
+Use the `to` operator to convert between units.
+*   `100km / 2h to mph`
 
 ## 5. Comments
-- Start with `#` or `//`.
-- End at the next newline.
-- Stored as a separate list of Spans; ignored by the structural sweep.
+Use `#` or `//` for notes. Everything from the symbol to the end of the line is ignored by the solver.
+*   `# This is a comment`
+*   `x = 10 // Setting the base value`
+
+## 6. Calculation Modes
+The engine interprets your intent based on the trailing operators:
+*   `x = 10` -> **Assignment**: Store the value.
+*   `10 + 5 = 15` -> **Assertion**: Validate the math (Errors if not true).
+*   `10 + 5 = ` -> **Query**: Ask the engine to calculate and fill in the result.
+
+## 7. Error Handling (Poisoning)
+If you make a mistake on one line (like an unclosed parenthesis), Crunchie "Poisons" that line and anything that depends on it. However, independent calculations on other lines will continue to work normally.
