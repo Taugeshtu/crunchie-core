@@ -1,10 +1,10 @@
 # Engine Stage: Unroller
 
-The Unroller transforms the hierarchical, parenthetical structure of the "Coupled Soup" into a flat, linear "Tape" of instructions.
+The Unroller transforms the hierarchical, parenthetical structure of the "SemanticResult" into a flat, linear "Tape" of instructions.
 
 ## Contract
 
-*   **Input**: `CoupledResult`
+*   **Input**: `SemanticResult`
 *   **Output**: `Tape` (The Bytecode)
 
 ## Innards

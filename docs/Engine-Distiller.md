@@ -2,7 +2,7 @@
 
 The Distiller acts as the semantic bridge. It is purely a **typization** stage. It is responsible for looking at the raw strings (IDs) produced by the parser and dressing them in their appropriate semantic clothes (identifying what is a number, a variable, an operator, etc.).
 
-*Crucially, the Distiller does not perform any mathematical grouping, implicit multiplication, or variable binding. It merely identifies.*
+*Crucially, the Distiller does not perform any mathematical grouping, implicit multiplication, or variable assignment. It merely identifies.*
 
 ## Contract
 
