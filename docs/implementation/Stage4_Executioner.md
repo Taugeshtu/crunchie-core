@@ -15,4 +15,6 @@ The Executioner is the final stage that performs the actual computation and inte
     *   If an instruction's dependencies are poisoned, the result is poisoned.
 *   **Solve Loop**: A single, linear sweep from top to bottom.
 *   **Query Resolution**: Identifies "Query" assignments (e.g. `x = `) and captures the calculated value to generate auto-fill edits.
-*   **Validation**: For existing assignments, it validates that the current buffer value matches the computed value, reporting a diagnostic if they diverge.
+*   **Validation**: 
+    *   **Constant Reassignment**: Enforces the `ReassignmentBehavior` configuration. If an assignment instruction targets a `Symbol::Constant`, the Executioner reports a `ConstantReassignment` diagnostic and poisons the operation.
+    *   **Value Parity**: For existing assignments, it validates that the current buffer value matches the computed value, reporting a diagnostic if they diverge.

@@ -16,15 +16,15 @@ The Parser is the entry point of the Crunchie pipeline. It performs a high-perfo
 
 ## Algorithm
 
-The Parser is a character-by-character state machine that maintains a stack where `stack[0]` is the Root and `stack[1]` is the current Line.
+The Parser is a character-by-character state machine that maintains a stack where `stack[0]` is the Root container.
 
 ### 1. Initialization
-The parser pre-populates its symbol map with operators, functions, and constants. It initializes the `Root` container (ID 0) and the first `Line` container (ID 1).
+The parser pre-populates its symbol map with operators, functions, and constants. It initializes the `Root` container (ID 0).
 
 ### 2. The Sweep
 As it consumes characters, it follows these primary rules:
 *   **Containment (`(`, `)`)**: On `(`, it allocates a new container ID, pushes it into the current container, and pushes it onto the stack. On `)`, it pops the stack.
-*   **Line Breaking (`\n`, `;`)**: At the root level, these trigger a "Boundary Transition"—closing the current line and starting a new one. 
+*   **Line Breaking (`\n`, `;`)**: These are simply interned as `Symbol::Operator(Sequence)` IDs and pushed into the current container. The Parser outputs a completely flat Root container; line breaking is delegated to the Janitor. 
 *   **Symbol Flushing**: Any non-structural character (alphanumeric) is accumulated into an `active_sym` buffer. This buffer is "flushed" into the current container whenever a structural character (operator, parenthesis, space) is hit.
 
 ### 3. Error Recovery (Poisoning)

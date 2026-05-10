@@ -18,7 +18,7 @@ The Distiller acts as the semantic bridge. It is purely a **typization** stage. 
     *   `Function`: A mathematical function (e.g., sin, sqrt).
     *   `Operator`: Structural and mathematical tokens (+, -, =, to, etc.).
     *   `Poison`: A symbol of error injected when typization fatally fails (e.g., malformed numbers or malformed alphanumeric monoliths).
-*   **Refinement**: Enriches the `Workspace` by replacing `Symbol::Raw` entries with their typed equivalents. When a single raw string explodes into multiple symbols (e.g., `10cm3`), it splices the new entities directly into the relevant `Container`'s topology.
+*   **Refinement**: Enriches the `Workspace` by replacing `Symbol::Raw` entries with their typed equivalents. When a single raw string explodes into multiple symbols (e.g., `10cm3`), it wraps them in a new `Container` and updates the symbol map to point to this `ContainerRef`.
 
 ## Algorithm
 
@@ -38,10 +38,9 @@ When it finds a `Symbol::Raw`, it delegates the string to the `munch` function (
 Depending on what the Muncher returns, the Distiller must update the graph:
 
 *   **1:1 Replacement**: If the Muncher returns a single `Symbol` (e.g., `"5"` becomes `[Quantity(5.0)]`), the Distiller simply updates the entry in `workspace.symbols` in-place. The ID remains the same, so the topology in `workspace.containers` does not need to be updated.
-*   **1:N Expansion (Splice)**: If the Muncher returns multiple `Symbols` (e.g., `"10cm3"` becomes `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`), the Distiller must:
-    1.  Overwrite the original ID in `workspace.symbols` with the first `Symbol`.
-    2.  Use `workspace.next_id` to mint new IDs and insert the remaining `Symbol`s into `workspace.symbols`.
-    3.  Find all `Container`s in `workspace.containers` that hold an `Entity` pointing to the original ID.
-    4.  Splice the newly minted IDs into those containers' `contents` vectors immediately following the original `Entity`, preserving the original `Entity.offset` for the new items to maintain provenance.
+*   **1:N Expansion (ContainerRef Replacement)**: If the Muncher returns multiple `Symbols` (e.g., `"10cm3"` becomes `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`), the Distiller avoids expensive O(N) vector splices by delegating to the existing hierarchy system:
+    1.  For each `Symbol` returned by the Muncher, the Distiller asks the `Workspace` to intern it (e.g., `workspace.get_or_intern_symbol(sym)`). This ensures we reuse IDs for known symbols instead of blindly minting new ones.
+    2.  It constructs a new `Container` holding these IDs as `Entity`s (preserving the original offset for each) and inserts it into `workspace.containers`.
+    3.  Overwrite the original ID in `workspace.symbols` with `Symbol::ContainerRef(new_container_id)`. The Unroller natively flattens `ContainerRef`s, bypassing the need to search or shift `contents` vectors entirely.
 
 *Note: Once all `Raw` symbols are typed, the Distiller's job is done. It passes the mutated `Workspace` directly to the Unroller. Any ambiguity about how a `Quantity` interacts with a neighboring `PhysUnit` is resolved by the Unroller's implicit multiplication rules.*
