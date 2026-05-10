@@ -33,18 +33,6 @@ impl ParserState {
         }
     }
 
-    /// Interns a symbol string and returns its ID
-    fn get_symbol_id(&mut self, sym: &str) -> i32 {
-        if let Some(&id) = self.workspace.intern_map.get(sym) {
-            return id;
-        }
-        let id = self.workspace.next_id;
-        self.workspace.next_id += 1;
-        self.workspace.intern_map.insert(sym.to_string(), id);
-        self.workspace.symbols.insert(id, Symbol::Raw(sym.to_string()));
-        id
-    }
-
     /// Allocates a new container and returns its ID
     fn create_container(&mut self) -> i32 {
         let id = self.workspace.next_id;
@@ -67,7 +55,7 @@ impl ParserState {
     fn flush_sym(&mut self) {
         if !self.active_sym.is_empty() {
             let sym = self.active_sym.clone();
-            let id = self.get_symbol_id(&sym);
+            let id = self.workspace.get_or_intern_symbol(&sym);
             let offset = self.sym_start_offset;
             self.push_entity(Entity { id, offset });
             self.active_sym.clear();
@@ -248,6 +236,19 @@ pub fn sweep<'a>(
             let eof_pos = Position { 
                 offset: text.len() as u32, 
                 line: state.line, 
+                col: state.col 
+            };
+            state.workspace.diagnostics.push(Diagnostic {
+                code: DiagnosticCode::UnclosedContainer,
+                span: Span { start: eof_pos, end: eof_pos },
+            });
+        }
+    }
+
+    // 6. Return Workspace
+    state.workspace
+}
+e: state.line, 
                 col: state.col 
             };
             state.workspace.diagnostics.push(Diagnostic {

@@ -73,6 +73,19 @@ pub struct Workspace {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+impl Workspace {
+    pub fn get_or_intern_symbol(&mut self, sym: &str) -> i32 {
+        if let Some(&id) = self.intern_map.get(sym) {
+            return id;
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        self.intern_map.insert(sym.to_string(), id);
+        self.symbols.insert(id, Symbol::Raw(sym.to_string()));
+        id
+    }
+}
+
 impl Default for Workspace {
     fn default() -> Self {
         Self {
