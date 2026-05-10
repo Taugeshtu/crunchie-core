@@ -8,95 +8,134 @@ This document provides a human-readable "test suite by example" for each stage o
 
 ## 1. Parser (Structural Sweep)
 
-The parser is "brainless." It breaks text into symbols based purely on whitespace and specific operator characters (`+`, `-`, `=`, `(`, etc.). It groups symbols into containers based on parentheses and handles the "Twin Rule" for newlines and semicolons.
+The parser is "brainless." It only knows about **Symbols** (interned strings) and **Containers** (flat lists of IDs). It doesn't know what a number or an operator is yet; it only knows about IDs.
 
 *   **Case: Basic Separation**
     *   `Input`: `x = 5 kg`
-    *   `Output`: `[Sym("x"), Op("="), Sym("5"), Sym("kg")]`
-*   **Case: No Separation**
+    *   `Symbols`: `{"x": 1, "=": -1, "5": 2, "kg": 3}`
+    *   `Output`: 
+        *   `Root (0)` contains `Line (4)`
+        *   `Line (4)` contains `[ID:1, ID:-1, ID:2, ID:3]`
+*   **Case: No Separation (Monoliths)**
     *   `Input`: `5kg`
-    *   `Output`: `[Sym("5kg")]`
-*   **Case: Grouping and Operators**
-    *   `Input`: `x = 5(1+2)`
-    *   `Output`: `[Sym("x"), Op("="), Sym("5"), Group([Sym("1"), Op("+"), Sym("2")])]`
+    *   `Symbols`: `{"5kg": 1}`
+    *   `Output`: 
+        *   `Root (0)` contains `Line (2)`
+        *   `Line (2)` contains `[ID:1]`
+*   **Case: Parenthetical Nesting**
+    *   `Input`: `(1+2)`
+    *   `Symbols`: `{"1": 1, "+": -2, "2": 2}`
+    *   `Output`: 
+        *   `Root (0)` contains `Line (3)`
+        *   `Line (3)` contains `Container (4)`
+        *   `Container (4)` contains `[ID:1, ID:-2, ID:2]`
 *   **Case: Twin Rule (Root Level)**
     *   `Input`: `x = 1; y = 2`
-    *   `Output`: Two lines in Root: `Line 1: [Sym("x"), Op("="), Sym("1")]`, `Line 2: [Sym("y"), Op("="), Sym("2")]`
+    *   `Output`: 
+        *   `Root (0)` contains `Line (4), Line (5)`
+        *   `Line (4)` contains `[x, =, 1]`
+        *   `Line (5)` contains `[y, =, 2]`
 *   **Case: Twin Rule (Nested Sequence)**
-    *   `Input`: `(1; 2\n 3)`
-    *   `Output`: `Group([Sym("1"), Op(","), Sym("2"), Op(","), Sym("3")])`
+    *   `Input`: `(1; 2)`
+    *   `Symbols`: `{"1": 1, ";": -8, "2": 2}`
+    *   `Output`: 
+        *   `Container (3)` contains `[ID:1, ID:-8, ID:2]` *(Note: Semicolon is just another ID here)*
 *   **Case: Bad Nesting (Unclosed)**
-    *   `Input`: `x = (5`
-    *   `Output`: `[Sym("x"), Op("="), Group([Sym("5")]) (Valid: False)]` *(Diagnostic: UnclosedContainer)*
+    *   `Input`: `(5`
+    *   `Output`: `Container (3)` contains `[ID:1]`. `Container(3).valid = false`.
 *   **Case: Bad Nesting (Stray)**
-    *   `Input`: `x = 5)`
-    *   `Output`: `[Sym("x"), Op("="), Sym("5")]` *(Diagnostic: StrayCloser)*
+    *   `Input`: `5)`
+    *   `Output`: `Line (1)` contains `[ID:1]`. *(Diagnostic: StrayCloser)*
 
 ---
 
 ## 2. Janitor (Hygiene)
 
-The Janitor scrubs the topological soup produced by the parser. It removes noise and normalizes structure so the Distiller doesn't have to deal with garbage.
+The Janitor scrubs the topological soup. It flattens "Inert" containers (those with exactly 1 child), and normalizes sequence markers (turning `;` and `\n` IDs into a canonical `,` operator ID).
 
-*   **Case: Empty Disposal**
-    *   `Input`: `[Sym("x"), Group([])]`
-    *   `Output`: `[Sym("x")]`
 *   **Case: Inert Container Flattening**
-    *   `Input`: `[Group([Sym("x")])]`
-    *   `Output`: `[Sym("x")]`
-*   **Case: Sequence Stuttering**
-    *   `Input`: `[Sym("1"), Op(","), Op(","), Sym("2")]`
-    *   `Output`: `[Sym("1"), Op(","), Sym("2")]` *(Diagnostic: StraySequence)*
-*   **Case: Trailing/Leading Sequences**
-    *   `Input`: `Group([Op(","), Sym("5"), Op(",")])`
-    *   `Output`: `Group([Sym("5")])` *(Diagnostics: StraySequence)*
+    *   `Input`: `Line(1)` contains `[ID:2 (Inert Container)]`, `Container(2)` contains `[ID:1 (x)]`
+    *   `Output`: `Line(1)` contains `[ID:1]`
+*   **Case: Sequence Normalization**
+    *   `Input`: `Container(1)` contains `[ID:1 (1), ID:-8 (;), ID:-8 (;), ID:2 (2)]`
+    *   `Output`: `Container(1)` contains `[ID:1, ID:-7 (,), ID:2]` *(Diagnostic: StraySequence)*
+*   **Case: Sequence Trimming**
+    *   `Input`: `Container(1)` contains `[ID:-7 (,), ID:1 (x), ID:-9 (\n)]`
+    *   `Output`: `Container(1)` contains `[ID:1]` *(Diagnostics: StraySequence)*
 *   **Case: Valid Empty Statement**
-    *   `Input`: `[Sym("foo"), Group([])]` *(Wait, Janitor discards this. What if we want a function call with no args `foo()`? Actually, if `()` is discarded, we lose the function call indication. We should refine Janitor rules for `()` if needed, but per docs it's currently discarded or kept depending on context. Let's stick to the current doc: "intentionally empty nested container e.g. `()` is valid".)*
-    *   `Input`: `Group([])`
-    *   `Output`: `Group([])` *(Retained if it represents an empty statement/arg list, overrides basic empty disposal).*
+    *   `Input`: `Container(1)` is empty but marked as a valid statement (e.g., `()`)
+    *   `Output`: `Container(1)` is preserved.
 
 ---
 
 ## 3. Distiller (Typization)
 
-The Distiller processes the cleaned symbols and determines their roles. It checks if a symbol is a known Operator, Constant, or Function. If not, it hands the raw string to the **Number Muncher** for lexical splitting and numeric evaluation.
+The Distiller processes the cleaned contents of a single container at a time. It dresses strings in semantic clothes (Variable, Quantity, etc.) and uses the **Number Muncher** for lexical splitting.
 
-*   **Case: Pure Typization**
-    *   `Input`: `[Sym("sin"), Group([Sym("PI")])]`
-    *   `Output`: `[Function("sin"), Group([Constant("PI")])]`
-*   **Case: Muncher (Basic Split)**
-    *   `Input`: `[Sym("5"), Sym("kg")]`
+*   **Case: Basic Typization**
+    *   `Input`: `(sin, ())`
+    *   `Output`: `[Function("sin"), Group(...)]`
+*   **Case: Muncher (Split Symbols)**
+    *   `Input`: `(5, kg)`
     *   `Output`: `[Quantity(5), PhysUnit("kg")]`
 *   **Case: Muncher (Monolith Split)**
-    *   `Input`: `[Sym("5kg")]`
+    *   `Input`: `(5kg)`
     *   `Output`: `[Quantity(5), PhysUnit("kg")]`
 *   **Case: Muncher (SI Multiplier)**
-    *   `Input`: `[Sym("5M")]`
+    *   `Input`: `(5M)`
     *   `Output`: `[Quantity(5000000)]`
 *   **Case: Muncher (Exponent Expansion)**
-    *   `Input`: `[Sym("10cm3")]`
-    *   `Output`: `[Quantity(10), PhysUnit("cm"), Op(^), Quantity(3)]`
-*   **Case: Muncher (Hexadecimal)**
-    *   `Input`: `[Sym("0xFF")]`
-    *   `Output`: `[Quantity(255)]`
-*   **Case: Muncher (Fallback Identifier)**
-    *   `Input`: `[Sym("kg123")]`
-    *   `Output`: `[Variable("kg123")]` *(Since kg123 isn't a unit and has no numeric prefix).*
+    *   `Input`: `(10cm3)`
+    *   `Output`: `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`
 *   **Case: Muncher (Quantity + Identifier)**
-    *   `Input`: `[Sym("65kg123")]`
+    *   `Input`: `(65kg123)`
     *   `Output`: `[Quantity(65), Variable("kg123")]`
-*   **Case: Muncher (Poison / Bad Parse)**
-    *   `Input`: `[Sym("1.2.3")]`
+*   **Case: Muncher (Hexadecimal)**
+    *   `Input`: `(0xFF)`
+    *   `Output`: `[Quantity(255)]`
+*   **Case: Muncher (Fallback Variable)**
+    *   `Input`: `(kg123)`
+    *   `Output`: `[Variable("kg123")]`
+*   **Case: Poisoning**
+    *   `Input`: `(1.2.3)`
     *   `Output`: `[Poison]` *(Diagnostic: InvalidNumber)*
-*   **Case: The `to` Operator**
-    *   `Input`: `[Sym("x"), Sym("to"), Sym("cm")]`
-    *   `Output`: `[Variable("x"), Op(To), PhysUnit("cm")]`
+*   **Case: Operators**
+    *   `Input`: `(x, =, (), *, 5)`
+    *   `Output`: `[Variable("x"), Operator(Assign), Group(...), Operator(Mul), Quantity(5)]`
+*   **Case: Conversion Operator**
+    *   `Input`: `(x, to, cm)`
+    *   `Output`: `[Variable("x"), Operator(To), PhysUnit("cm")]`
 
 ---
 
 ## 4. Unroller (Precedence & Flattening)
 
-TBD. (Will cover Shunting-Yard, Virtual Registers, and strict implicit multiplication rules).
+The Unroller flattens the hierarchical SemanticUnits into a linear "Tape" of instructions. It uses the Shunting-Yard algorithm to handle precedence and virtual registers (`r0`, `r1`, etc.) for intermediate results.
+
+*   **Case 1: Implicit Multiplication**
+    *   `Input`: `[Quantity(3), Group([Quantity(1), Operator(+), Quantity(4)])]`
+    *   `Logic`: The Unroller sees a Number bumping a Group and injects a `Mul` operator.
+    *   `Output Tape`:
+        *   `r0 = Add(Quantity(1), Quantity(4))`
+        *   `r1 = Mul(Quantity(3), r0)`
+*   **Case 2: Assignment & Precedence**
+    *   `Input`: `[Variable("x"), Operator(Assign), Quantity(10), Operator(Div), Quantity(2), Operator(Add), Quantity(5)]`
+    *   `Logic`: Division happens before Addition. Assignment happens last.
+    *   `Output Tape`:
+        *   `r0 = Div(Quantity(10), Quantity(2))`
+        *   `r1 = Add(r0, Quantity(5))`
+        *   `Assign(target: "x", value: r1)`
+*   **Case 3: Units and Conversion**
+    *   `Input`: `[Variable("y"), Operator(Assign), Group([Quantity(1), PhysUnit("m"), Operator(+), Quantity(10), PhysUnit("cm")]), Operator(To), PhysUnit("mm")]`
+    *   `Logic`:
+        1. `1m` and `10cm` are expanded via implicit multiplication.
+        2. The group result is passed to the `To` operator.
+    *   `Output Tape`:
+        *   `r0 = Mul(Quantity(1), PhysUnit("m"))`
+        *   `r1 = Mul(Quantity(10), PhysUnit("cm"))`
+        *   `r2 = Add(r0, r1)`
+        *   `r3 = To(value: r2, target_unit: "mm")`
+        *   `Assign(target: "y", value: r3)`
 
 ---
 
