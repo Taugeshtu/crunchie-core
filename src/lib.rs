@@ -3,6 +3,7 @@ pub mod model;
 pub mod parser;
 pub mod builtins;
 pub mod janitor;
+pub mod distiller;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
@@ -26,8 +27,9 @@ pub fn janitor(workspace: &mut Workspace) {
 
 /// Stage 2.2: The Distiller
 /// Assigns roles to symbols and marries values to their units.
-pub fn distiller(_workspace: &mut Workspace) {
-    // Stub
+pub fn distiller(workspace: &mut Workspace) {
+    let units = distiller::get_default_units();
+    distiller::distill(workspace, &units);
 }
 
 /// Stage 2.3: The Unroller

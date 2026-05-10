@@ -22,6 +22,8 @@ pub enum DiagnosticCode {
     UnclosedContainer,
     IllegalCharacter,
     StraySequence,
+    MalformedNumber,
+    MalformedSymbol,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
