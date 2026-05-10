@@ -31,13 +31,15 @@ The Distiller is initialized with a context containing `known_units` (extracted 
 ### 2. Typization & Munching
 The Distiller iterates through the `Unit`s in a container. When it encounters a nested Container ID, it recursively applies this algorithm and wraps the result in a `SemanticUnit::Group`.
 
-When it encounters a Symbol ID, it retrieves the original string and categorizes it in order:
-1.  **Operator**: If the token matches a known operator string (`+`, `-`, `=`, `^`, `to`, `,`), it emits `SemanticUnit::Operator(OpCode)`.
-2.  **Constant**: If it matches a name in `known_constants`, it emits `SemanticUnit::Constant(name)`.
-3.  **Function**: If it matches a name in `known_functions`, it emits `SemanticUnit::Function(name)`.
-4.  **The Muncher Fallback**: If the symbol is none of the above, the Distiller delegates it to the `munch` function (see `Distiller-Number-Muncher.md`). 
-    *   Because the parser is "brainless" and treats text like `5cm` as a single symbol if there are no spaces, the Muncher is responsible for splitting alphanumeric strings, expanding implicit exponents, applying SI multipliers, and resolving units.
-    *   The Muncher returns a `Vec<SemanticUnit>` (e.g., `[Quantity(5), PhysUnit("cm")]`) which is spliced directly into the Distiller's growing sequence.
-    *   **The Poison Fallback**: If the Muncher fatally fails (e.g., trying to parse `1.2.3` or failing a "Strict Monolith" rule like `65kg123`), it appends a diagnostic (`InvalidNumber` or `MalformedSymbol`) and emits `SemanticUnit::Poison` into the stream.
+When it encounters a Symbol ID, it uses the **[[ID_SPACE]]** quadrants to categorize the unit with minimal overhead:
+
+1.  **Operator** (ID: `-999,999` to `-1`): Maps the ID directly to an `OpCode`.
+2.  **Function** (ID: `<= -1,000,000`): Emits `SemanticUnit::Function(name)`.
+3.  **Constant** (ID: `>= 1,000,000`): Emits `SemanticUnit::Constant(name)`.
+4.  **The Muncher Fallback** (ID: `1` to `999,999`): If the symbol is a standard dynamic ID, the Distiller retrieves its string and delegates it to the `munch` function (see `Distiller-Number-Muncher.md`). 
+    *   Because the parser is "brainless", the Muncher is responsible for splitting alphanumeric strings (e.g., `5kg`), expanding implicit exponents, and resolving units.
+    *   The Muncher returns a `Vec<SemanticUnit>` which is spliced directly into the stream.
+    *   **The Poison Fallback**: If the Muncher fails (e.g., `1.2.3`), it appends a diagnostic and emits `SemanticUnit::Poison`.
+
 
 *Note: Once this list is built, the Distiller's job is done. It passes the resulting list directly to the Unroller. Any ambiguity about how a `Quantity` interacts with a neighboring `PhysUnit` is resolved by the Unroller's implicit multiplication rules.*
