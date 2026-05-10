@@ -187,12 +187,25 @@ pub fn sweep<'a>(
             _ => {
                 let remaining = &text[offset as usize..];
                 if let Some(&op) = builtins::PUNCTUATION_OPERATORS.iter().find(|&&op| remaining.starts_with(op)) {
-                    state.flush_sym();
-                    let op_id = state.workspace.intern_map.get(op).copied().unwrap_or_else(|| {
-                        state.get_symbol_id(op)
-                    });
-                    state.push_entity(Entity { id: op_id, offset });
-                    state.skip_bytes = op.len() - char.len_utf8();
+                    let is_exponent_sign = (op == "+" || op == "-") && {
+                        let sym = &state.active_sym;
+                        if sym.ends_with('e') || sym.ends_with('E') {
+                            let prefix = &sym[..sym.len() - 1];
+                            prefix.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_') && prefix.chars().any(|c| c.is_ascii_digit())
+                        } else {
+                            false
+                        }
+                    };
+
+                    if is_exponent_sign {
+                        state.active_sym.push_str(op);
+                        state.skip_bytes = op.len() - char.len_utf8();
+                    } else {
+                        state.flush_sym();
+                        let op_id = state.workspace.get_or_intern_symbol(op);
+                        state.push_entity(Entity { id: op_id, offset });
+                        state.skip_bytes = op.len() - char.len_utf8();
+                    }
                 } else {
                     if state.active_sym.is_empty() {
                         state.sym_start_offset = offset;
@@ -229,9 +242,12 @@ pub fn sweep<'a>(
     // Anything beyond [Root] on the stack is unclosed
     while state.stack.len() > 1 {
         if let Some(cid) = state.stack.pop() {
-            if let Some(container) = state.workspace.containers.get_mut(&cid) {
+            let start_pos = if let Some(container) = state.workspace.containers.get_mut(&cid) {
                 container.corrupted = true;
-            }
+                container.start_pos
+            } else {
+                Position { offset: 0, line: 0, col: 0 }
+            };
             
             let eof_pos = Position { 
                 offset: text.len() as u32, 
@@ -240,20 +256,7 @@ pub fn sweep<'a>(
             };
             state.workspace.diagnostics.push(Diagnostic {
                 code: DiagnosticCode::UnclosedContainer,
-                span: Span { start: eof_pos, end: eof_pos },
-            });
-        }
-    }
-
-    // 6. Return Workspace
-    state.workspace
-}
-e: state.line, 
-                col: state.col 
-            };
-            state.workspace.diagnostics.push(Diagnostic {
-                code: DiagnosticCode::UnclosedContainer,
-                span: Span { start: eof_pos, end: eof_pos },
+                span: Span { start: start_pos, end: eof_pos },
             });
         }
     }

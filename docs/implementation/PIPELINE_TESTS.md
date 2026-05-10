@@ -46,6 +46,10 @@ The parser is "brainless." It only knows about **Symbols** (interned strings) an
 *   **Case: Bad Nesting (Stray)**
     *   `Input`: `5)`
     *   `Output`: `Line (1)` contains `[ID:1]`. *(Diagnostic: StrayCloser)*
+*   **Case: Exponential Numbers**
+    *   `Input`: `1e-5kg`
+    *   `Symbols`: `{"1e-5kg": 1}`
+    *   `Output`: `Line (2)` contains `[ID:1]`
 
 ---
 

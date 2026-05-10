@@ -105,6 +105,8 @@ pub struct Container {
     pub contents: Vec<Entity>,
     /// Tracks if this container was unclosed or fatally malformed.
     pub corrupted: bool, 
+    /// The structural starting position of this container (e.g. the '(')
+    pub start_pos: Position,
 }
 
 impl Default for Container {
@@ -112,6 +114,7 @@ impl Default for Container {
         Self {
             contents: Vec::new(),
             corrupted: false,
+            start_pos: Position { offset: 0, line: 0, col: 0 },
         }
     }
 }

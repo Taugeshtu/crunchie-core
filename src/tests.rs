@@ -48,6 +48,9 @@ fn test_parser_cases() {
         ("-5", r#"["-", "5"]"#),
         ("x += 5", r#"["x", "+=", "5"]"#),
         ("10 to cm", r#"["10", "to", "cm"]"#),
+        ("1e-5", r#"["1e-5"]"#),
+        ("1.2e+10", r#"["1.2e+10"]"#),
+        ("1e-5kg", r#"["1e-5kg"]"#),
     ];
 
     let builtins = builtins::generate_symbol_map();
