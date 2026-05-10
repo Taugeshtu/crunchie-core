@@ -2,6 +2,7 @@ pub mod config;
 pub mod model;
 pub mod parser;
 pub mod builtins;
+pub mod janitor;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
@@ -19,8 +20,8 @@ pub fn parse<'a>(
 
 /// Stage 2.1: The Janitor
 /// Scrubs the raw structural soup for mathematical sanity.
-pub fn janitor(_workspace: &mut Workspace) {
-    // Stub
+pub fn janitor(workspace: &mut Workspace) {
+    janitor::scrub(workspace);
 }
 
 /// Stage 2.2: The Distiller
