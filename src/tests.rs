@@ -3,22 +3,28 @@ use std::collections::HashMap;
 
 /// Helper to turn the flat topology back into nested vectors for easy assertions,
 /// matching the logic from the Python prototype's `reconstruct` function.
-fn reconstruct(result: &ParserResult) -> Vec<serde_json::Value> {
-    // Create a reverse lookup for symbols
-    let mut reverse_symbols = HashMap::new();
-    for (k, v) in &result.symbols {
-        reverse_symbols.insert(*v, k.clone());
+fn reconstruct(workspace: &Workspace) -> Vec<serde_json::Value> {
+    // Create a reverse lookup for symbols using intern_map and fallback to symbols map
+    let mut reverse_intern = HashMap::new();
+    for (k, &v) in &workspace.intern_map {
+        reverse_intern.insert(v, k.clone());
     }
 
-    fn resolve_container(cid: i32, result: &ParserResult, reverse_symbols: &HashMap<i32, String>) -> Vec<serde_json::Value> {
+    fn resolve_container(cid: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> Vec<serde_json::Value> {
         let mut res = Vec::new();
-        if let Some(container) = result.containers.get(&cid) {
-            for unit in &container.contents {
-                if result.containers.contains_key(&unit.id) {
-                    res.push(serde_json::Value::Array(resolve_container(unit.id, result, reverse_symbols)));
+        if let Some(container) = workspace.containers.get(&cid) {
+            for entity in &container.contents {
+                if let Some(model::Symbol::ContainerRef(child_cid)) = workspace.symbols.get(&entity.id) {
+                    res.push(serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern)));
                 } else {
-                    let sym = reverse_symbols.get(&unit.id).cloned().unwrap_or_else(|| format!("?{}?", unit.id));
-                    res.push(serde_json::Value::String(sym));
+                    let sym_str = reverse_intern.get(&entity.id).cloned().unwrap_or_else(|| {
+                        if let Some(model::Symbol::Raw(s)) = workspace.symbols.get(&entity.id) {
+                            s.clone()
+                        } else {
+                            format!("?{}?", entity.id)
+                        }
+                    });
+                    res.push(serde_json::Value::String(sym_str));
                 }
             }
         }
@@ -26,7 +32,7 @@ fn reconstruct(result: &ParserResult) -> Vec<serde_json::Value> {
     }
 
     // Root is always ID 0
-    resolve_container(0, result, &reverse_symbols)
+    resolve_container(0, workspace, &reverse_intern)
 }
 
 #[test]
@@ -62,7 +68,7 @@ fn test_unclosed_container() {
     let result = parse("x = (5", &builtins, std::iter::empty::<&str>());
     
     // Find the dynamically created nested container (which will be the only one besides Root ID 0)
-    let (_, container) = result.containers.iter().find(|(id, _)| **id != 0).unwrap();
+    let (_, container) = result.containers.iter().find(|&(&id, _)| id != 0).unwrap();
     assert!(container.corrupted);
     assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::UnclosedContainer)));
 }

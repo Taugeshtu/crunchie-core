@@ -17,28 +17,6 @@ pub struct Span {
 pub type Comment = Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Unit {
-    pub id: i32,
-    pub offset: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Container {
-    pub contents: Vec<Unit>,
-    /// The ONLY error state the Engine cares about.
-    pub corrupted: bool,
-}
-
-impl Default for Container {
-    fn default() -> Self {
-        Self {
-            contents: Vec::new(),
-            corrupted: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiagnosticCode {
     StrayCloser,
     UnclosedContainer,
@@ -50,15 +28,6 @@ pub enum DiagnosticCode {
 pub struct Diagnostic {
     pub code: DiagnosticCode,
     pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParserResult {
-    /// Root is always key 0
-    pub containers: HashMap<i32, Container>,
-    pub symbols: HashMap<String, i32>,
-    pub comments: Vec<Comment>,
-    pub diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,52 +54,85 @@ pub enum OpCode {
     To,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SemanticUnit {
-    /// A numeric literal
-    Quantity(f64),
-    /// A named identifier
-    Variable(String),
-    /// A pre-seeded mathematical constant (e.g. PI, TAU)
-    Constant(String),
-    /// A standalone physical unit (e.g. kg)
-    PhysUnit(String),
-    /// A function call (e.g. "sin")
-    Function(String),
-    /// A mathematical operator
+#[derive(Debug, Clone)]
+pub struct Workspace {
+    /// The global ID counter for minting new symbols and containers.
+    pub next_id: i32,
+    
+    /// The absolute source of truth for what an ID means.
+    /// Both the Parser and the Distiller mint entries here.
+    pub symbols: HashMap<i32, Symbol>,       
+    
+    /// For O(1) lookups during the Parser's initial string interning.
+    pub intern_map: HashMap<String, i32>,    
+    
+    /// The topology of the buffer. Lists of raw IDs.
+    pub containers: HashMap<i32, Container>,
+    
+    pub comments: Vec<Span>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl Default for Workspace {
+    fn default() -> Self {
+        Self {
+            next_id: 1,
+            symbols: HashMap::new(),
+            intern_map: HashMap::new(),
+            containers: HashMap::new(),
+            comments: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Container {
+    /// An incredibly tight, cache-friendly array of 8-byte chunks.
+    pub contents: Vec<Entity>,
+    /// Tracks if this container was unclosed or fatally malformed.
+    pub corrupted: bool, 
+}
+
+impl Default for Container {
+    fn default() -> Self {
+        Self {
+            contents: Vec::new(),
+            corrupted: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entity { 
+    /// The pointer to `Workspace.symbols`.
+    pub id: i32,
+    /// Provenance: Where did this entity originate in the text buffer?
+    pub offset: u32, 
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Symbol {
+    // --- Stage 1: Seeded by the Parser ---
+    /// Unclassified alphanumeric monoliths (e.g., "5kg", "x")
+    Raw(String),
+    /// Points to a key in `Workspace.containers`
+    ContainerRef(i32), 
     Operator(OpCode),
-    /// A nested group of units
-    Group(Vec<SemanticUnit>),
-    /// A symbol of error injected when typization fatally fails
+    Function(String),
+    Constant(String),
+    
+    // --- Stage 2: Minted by the Distiller (Number Muncher) ---
+    /// The f64 result of a successfully parsed number
+    Quantity(f64),
+    /// A named variable binding
+    Variable(String),
+    /// A standalone physical unit recognized by Numbat
+    PhysUnit(String),
+    /// Injected when typization fatally fails
     Poison,
+    
+    // --- Stage 3: Minted by the Vectorizer (Aspiration) ---
+    /// Evaluated from ContainerRef during the vectorization pass
+    VectorRef(i32),    
 }
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SemanticResult {
-    pub lines: Vec<Vec<SemanticUnit>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Operand {
-    /// A direct physical quantity
-    Literal { value: f64, unit: Option<String> },
-    /// A reference to the result of a previous instruction on the Tape
-    Register(usize),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Instruction {
-    pub op: OpCode,
-    pub args: Vec<Operand>,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Tape {
-    pub instructions: Vec<Instruction>,
-    /// Maps Instruction Index -> (Variable Name, Requested Unit)
-    pub assignments: HashMap<usize, (String, Option<String>)>,
-    /// List of Instruction Indices that represent queries (e.g. "x = ")
-    pub queries: Vec<usize>,
-}
-

@@ -1,11 +1,10 @@
-use crate::model::{Container, Diagnostic, ParserResult, Unit};
+use crate::model::{Container, Diagnostic, DiagnosticCode, Entity, OpCode, Position, Span, Symbol, Workspace};
 use crate::builtins;
 use std::collections::HashMap;
 
 struct ParserState {
-    next_id: i32,
+    workspace: Workspace,
     stack: Vec<i32>,
-    result: ParserResult,
 
     // Omnibus State Trackers
     active_sym: String,
@@ -13,7 +12,7 @@ struct ParserState {
     line: u32,
     col: u32,
     in_comment: bool,
-    comment_start_pos: crate::model::Position,
+    comment_start_pos: Position,
     skip_next: bool,
     skip_bytes: usize,
 }
@@ -21,20 +20,14 @@ struct ParserState {
 impl ParserState {
     fn new() -> Self {
         Self {
-            next_id: 1,
+            workspace: Workspace::default(),
             stack: Vec::new(),
-            result: ParserResult {
-                containers: HashMap::new(),
-                symbols: HashMap::new(),
-                comments: Vec::new(),
-                diagnostics: Vec::new(),
-            },
             active_sym: String::new(),
             sym_start_offset: 0,
             line: 0,
             col: 0,
             in_comment: false,
-            comment_start_pos: crate::model::Position { offset: 0, line: 0, col: 0 },
+            comment_start_pos: Position { offset: 0, line: 0, col: 0 },
             skip_next: false,
             skip_bytes: 0,
         }
@@ -42,28 +35,30 @@ impl ParserState {
 
     /// Interns a symbol string and returns its ID
     fn get_symbol_id(&mut self, sym: &str) -> i32 {
-        if let Some(&id) = self.result.symbols.get(sym) {
+        if let Some(&id) = self.workspace.intern_map.get(sym) {
             return id;
         }
-        let id = self.next_id;
-        self.next_id += 1;
-        self.result.symbols.insert(sym.to_string(), id);
+        let id = self.workspace.next_id;
+        self.workspace.next_id += 1;
+        self.workspace.intern_map.insert(sym.to_string(), id);
+        self.workspace.symbols.insert(id, Symbol::Raw(sym.to_string()));
         id
     }
 
     /// Allocates a new container and returns its ID
     fn create_container(&mut self) -> i32 {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.result.containers.insert(id, Container::default());
+        let id = self.workspace.next_id;
+        self.workspace.next_id += 1;
+        self.workspace.containers.insert(id, Container::default());
+        self.workspace.symbols.insert(id, Symbol::ContainerRef(id));
         id
     }
 
-    /// Pushes a unit to the container currently at the top of the stack
-    fn push_unit(&mut self, unit: Unit) {
+    /// Pushes an entity to the container currently at the top of the stack
+    fn push_entity(&mut self, entity: Entity) {
         if let Some(&current_id) = self.stack.last() {
-            if let Some(container) = self.result.containers.get_mut(&current_id) {
-                container.contents.push(unit);
+            if let Some(container) = self.workspace.containers.get_mut(&current_id) {
+                container.contents.push(entity);
             }
         }
     }
@@ -74,7 +69,7 @@ impl ParserState {
             let sym = self.active_sym.clone();
             let id = self.get_symbol_id(&sym);
             let offset = self.sym_start_offset;
-            self.push_unit(Unit { id, offset });
+            self.push_entity(Entity { id, offset });
             self.active_sym.clear();
         }
     }
@@ -84,23 +79,42 @@ pub fn sweep<'a>(
     text: &str,
     builtins: &HashMap<String, i32>,
     constants: impl IntoIterator<Item = &'a str>,
-) -> ParserResult {
+) -> Workspace {
     let mut state = ParserState::new();
 
     // 1. Initialization
     for (k, v) in builtins {
-        state.result.symbols.insert(k.clone(), *v);
+        state.workspace.intern_map.insert(k.clone(), *v);
+        let sym = if *v <= builtins::FUNCTIONS_START_ID {
+            Symbol::Function(k.clone())
+        } else if *v <= -1 {
+            match k.as_str() {
+                "+" => Symbol::Operator(OpCode::Add),
+                "-" => Symbol::Operator(OpCode::Sub),
+                "*" => Symbol::Operator(OpCode::Mul),
+                "/" => Symbol::Operator(OpCode::Div),
+                "^" => Symbol::Operator(OpCode::Pow),
+                "=" | "+=" | "-=" | ">=" | "<=" | "==" | "!=" | ">>" | "<<" => Symbol::Operator(OpCode::Assign), // using Assign for now, may need more OpCodes later
+                "\n" | ";" | "," => Symbol::Operator(OpCode::Sequence),
+                "to" => Symbol::Operator(OpCode::To),
+                _ => Symbol::Raw(k.clone()),
+            }
+        } else {
+            Symbol::Raw(k.clone())
+        };
+        state.workspace.symbols.insert(*v, sym);
     }
 
     let mut current_constant_id = builtins::CONSTANTS_START_ID;
     for c in constants {
-        state.result.symbols.insert(c.to_string(), current_constant_id);
+        state.workspace.intern_map.insert(c.to_string(), current_constant_id);
+        state.workspace.symbols.insert(current_constant_id, Symbol::Constant(c.to_string()));
         current_constant_id += 1;
     }
     
     // 2. Bootstrapping the Root
     let root_id = 0;
-    state.result.containers.insert(root_id, Container::default());
+    state.workspace.containers.insert(root_id, Container::default());
     state.stack.push(root_id);
 
     // 4. The Sweep Loop
@@ -117,22 +131,20 @@ pub fn sweep<'a>(
         }
 
         let offset = offset as u32;
-        let current_pos = crate::model::Position { offset, line: state.line, col: state.col };
+        let current_pos = Position { offset, line: state.line, col: state.col };
 
         //   A. Comment Handling State
         if state.in_comment {
             if char == '\n' {
-                let span = crate::model::Span {
+                let span = Span {
                     start: state.comment_start_pos,
                     end: current_pos,
                 };
-                state.result.comments.push(span);
+                state.workspace.comments.push(span);
                 state.in_comment = false;
                 // Note: We do NOT 'continue' here. The \n must also trigger 
                 // the structural logic in Block C.
             } else {
-                // Keep accumulating. We don't actually store the text (just the Span),
-                // but we need to track line/col for the end position.
                 if char == '\n' { state.line += 1; state.col = 0; } else { state.col += 1; }
                 continue;
             }
@@ -160,7 +172,7 @@ pub fn sweep<'a>(
             '(' => {
                 state.flush_sym();
                 let new_cid = state.create_container();
-                state.push_unit(Unit { id: new_cid, offset });
+                state.push_entity(Entity { id: new_cid, offset });
                 state.stack.push(new_cid);
             }
             ')' => {
@@ -168,9 +180,9 @@ pub fn sweep<'a>(
                 if state.stack.len() > 1 {
                     state.stack.pop();
                 } else {
-                    state.result.diagnostics.push(Diagnostic {
-                        code: crate::model::DiagnosticCode::StrayCloser,
-                        span: crate::model::Span { start: current_pos, end: current_pos },
+                    state.workspace.diagnostics.push(Diagnostic {
+                        code: DiagnosticCode::StrayCloser,
+                        span: Span { start: current_pos, end: current_pos },
                     });
                 }
             }
@@ -179,17 +191,19 @@ pub fn sweep<'a>(
             }
             c if builtins::ILLEGAL_CHARS.contains(&c) => {
                 state.flush_sym();
-                state.result.diagnostics.push(Diagnostic {
-                    code: crate::model::DiagnosticCode::IllegalCharacter,
-                    span: crate::model::Span { start: current_pos, end: current_pos },
+                state.workspace.diagnostics.push(Diagnostic {
+                    code: DiagnosticCode::IllegalCharacter,
+                    span: Span { start: current_pos, end: current_pos },
                 });
             }
             _ => {
                 let remaining = &text[offset as usize..];
                 if let Some(&op) = builtins::PUNCTUATION_OPERATORS.iter().find(|&&op| remaining.starts_with(op)) {
                     state.flush_sym();
-                    let op_id = state.get_symbol_id(op);
-                    state.push_unit(Unit { id: op_id, offset });
+                    let op_id = state.workspace.intern_map.get(op).copied().unwrap_or_else(|| {
+                        state.get_symbol_id(op)
+                    });
+                    state.push_entity(Entity { id: op_id, offset });
                     state.skip_bytes = op.len() - char.len_utf8();
                 } else {
                     if state.active_sym.is_empty() {
@@ -213,12 +227,12 @@ pub fn sweep<'a>(
     state.flush_sym();
 
     if state.in_comment {
-        let eof_pos = crate::model::Position { 
+        let eof_pos = Position { 
             offset: text.len() as u32, 
             line: state.line, 
             col: state.col 
         };
-        state.result.comments.push(crate::model::Span {
+        state.workspace.comments.push(Span {
             start: state.comment_start_pos,
             end: eof_pos,
         });
@@ -227,22 +241,22 @@ pub fn sweep<'a>(
     // Anything beyond [Root] on the stack is unclosed
     while state.stack.len() > 1 {
         if let Some(cid) = state.stack.pop() {
-            if let Some(container) = state.result.containers.get_mut(&cid) {
+            if let Some(container) = state.workspace.containers.get_mut(&cid) {
                 container.corrupted = true;
             }
             
-            let eof_pos = crate::model::Position { 
+            let eof_pos = Position { 
                 offset: text.len() as u32, 
                 line: state.line, 
                 col: state.col 
             };
-            state.result.diagnostics.push(Diagnostic {
-                code: crate::model::DiagnosticCode::UnclosedContainer,
-                span: crate::model::Span { start: eof_pos, end: eof_pos },
+            state.workspace.diagnostics.push(Diagnostic {
+                code: DiagnosticCode::UnclosedContainer,
+                span: Span { start: eof_pos, end: eof_pos },
             });
         }
     }
 
-    // 6. Return ParserResult
-    state.result
+    // 6. Return Workspace
+    state.workspace
 }
