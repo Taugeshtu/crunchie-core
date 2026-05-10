@@ -37,5 +37,12 @@ The engine interprets your intent based on the trailing operators:
 *   `10 + 5 = 15` -> **Assertion**: Validate the math (Errors if not true).
 *   `10 + 5 = ` -> **Query**: Ask the engine to calculate and fill in the result.
 
+Queries can be combined with variables and conversions for powerful workflows:
+```
+r = 5cm
+area = PI * r^2
+area to mm^2 = 
+```
+
 ## 7. Error Handling (Poisoning)
 If you make a mistake on one line (like an unclosed parenthesis), Crunchie "Poisons" that line and anything that depends on it. However, independent calculations on other lines will continue to work normally.
