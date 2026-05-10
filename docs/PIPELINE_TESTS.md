@@ -51,8 +51,14 @@ The parser is "brainless." It only knows about **Symbols** (interned strings) an
 
 ## 2. Janitor (Hygiene)
 
-The Janitor scrubs the topological soup. It flattens "Inert" containers (those with exactly 1 child), and normalizes sequence markers (turning `;` and `\n` IDs into a canonical `,` operator ID).
+The Janitor scrubs the topological soup. It breaks the flat Root into Lines, flattens "Inert" containers (those with exactly 1 child), and normalizes nested sequence markers (turning `;` and `\n` IDs into a canonical `,` operator ID).
 
+*   **Case: Root Line Breaking**
+    *   `Input`: `Root (0)` contains `[ID:1 (x), ID:-8 (;), ID:2 (y), ID:-9 (\n), ID:-9 (\n)]`
+    *   `Output`: 
+        *   `Root (0)` contains `Line (1), Line (2)`
+        *   `Line (1)` contains `[ID:1]`
+        *   `Line (2)` contains `[ID:2]`
 *   **Case: Inert Container Flattening**
     *   `Input`: `Line(1)` contains `[ID:2 (Inert Container)]`, `Container(2)` contains `[ID:1 (x)]`
     *   `Output`: `Line(1)` contains `[ID:1]`
