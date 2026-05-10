@@ -39,18 +39,21 @@ fn reconstruct(workspace: &Workspace) -> Vec<serde_json::Value> {
 fn test_parser_cases() {
     let cases = [
         ("5", r#"["5"]"#),
-        ("x = 5", r#"["x", "=", "5"]"#),
+        ("x = 5 kg", r#"["x", "=", "5", "kg"]"#),
+        ("5kg", r#"["5kg"]"#),
         ("3 + (1 + 2)", r#"["3", "+", ["1", "+", "2"]]"#),
         ("x = 5 # comment", r#"["x", "=", "5"]"#),
         ("x=1; y=2", r#"["x", "=", "1", ";", "y", "=", "2"]"#),
         ("z = (3, 5\n 7)", r#"["z", "=", ["3", ",", "5", "\n", "7"]]"#),
         ("z = (3; 5)", r#"["z", "=", ["3", ";", "5"]]"#),
+        ("(1; 2)", r#"[["1", ";", "2"]]"#),
         ("-5", r#"["-", "5"]"#),
         ("x += 5", r#"["x", "+=", "5"]"#),
         ("10 to cm", r#"["10", "to", "cm"]"#),
         ("1e-5", r#"["1e-5"]"#),
         ("1.2e+10", r#"["1.2e+10"]"#),
         ("1e-5kg", r#"["1e-5kg"]"#),
+        ("x = 1\n\ny = 2", r#"["x", "=", "1", "\n", "\n", "y", "=", "2"]"#),
     ];
 
     let builtins = builtins::generate_symbol_map();
@@ -63,6 +66,14 @@ fn test_parser_cases() {
         
         assert_eq!(reconstructed, expected_value, "Failed on input: {:?}", input);
     }
+}
+
+#[test]
+fn test_stray_closer() {
+    let builtins = builtins::generate_symbol_map();
+    let result = parse("5)", &builtins, std::iter::empty::<&str>());
+    
+    assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::StrayCloser)));
 }
 
 #[test]

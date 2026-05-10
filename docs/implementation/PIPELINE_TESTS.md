@@ -8,48 +8,43 @@ This document provides a human-readable "test suite by example" for each stage o
 
 ## 1. Parser (Structural Sweep)
 
-The parser is "brainless." It only knows about **Symbols** (interned strings) and **Containers** (flat lists of IDs). It doesn't know what a number or an operator is yet; it only knows about IDs.
+The parser is "brainless." It only knows about **Symbols** (interned strings) and **Containers** (flat lists of IDs). It doesn't know what a number or an operator is yet; it only knows about IDs. It does NOT group lines; that is delegated to the Janitor.
 
 *   **Case: Basic Separation**
     *   `Input`: `x = 5 kg`
     *   `Symbols`: `{"x": 1, "=": -1, "5": 2, "kg": 3}`
     *   `Output`: 
-        *   `Root (0)` contains `Line (4)`
-        *   `Line (4)` contains `[ID:1, ID:-1, ID:2, ID:3]`
+        *   `Root (0)` contains `[ID:1, ID:-1, ID:2, ID:3]`
 *   **Case: No Separation (Monoliths)**
     *   `Input`: `5kg`
     *   `Symbols`: `{"5kg": 1}`
     *   `Output`: 
-        *   `Root (0)` contains `Line (2)`
-        *   `Line (2)` contains `[ID:1]`
+        *   `Root (0)` contains `[ID:1]`
 *   **Case: Parenthetical Nesting**
     *   `Input`: `(1+2)`
     *   `Symbols`: `{"1": 1, "+": -2, "2": 2}`
     *   `Output`: 
-        *   `Root (0)` contains `Line (3)`
-        *   `Line (3)` contains `Container (4)`
-        *   `Container (4)` contains `[ID:1, ID:-2, ID:2]`
+        *   `Root (0)` contains `Container (3)`
+        *   `Container (3)` contains `[ID:1, ID:-2, ID:2]`
 *   **Case: Twin Rule (Root Level)**
     *   `Input`: `x = 1; y = 2`
     *   `Output`: 
-        *   `Root (0)` contains `Line (4), Line (5)`
-        *   `Line (4)` contains `[x, =, 1]`
-        *   `Line (5)` contains `[y, =, 2]`
+        *   `Root (0)` contains `[x, =, 1, ;, y, =, 2]`
 *   **Case: Twin Rule (Nested Sequence)**
     *   `Input`: `(1; 2)`
     *   `Symbols`: `{"1": 1, ";": -8, "2": 2}`
     *   `Output`: 
-        *   `Container (3)` contains `[ID:1, ID:-8, ID:2]` *(Note: Semicolon is just another ID here)*
+        *   `Container (3)` contains `[ID:1, ID:-8, ID:2]`
 *   **Case: Bad Nesting (Unclosed)**
     *   `Input`: `(5`
     *   `Output`: `Container (3)` contains `[ID:1]`. `Container(3).corrupted = true`.
 *   **Case: Bad Nesting (Stray)**
     *   `Input`: `5)`
-    *   `Output`: `Line (1)` contains `[ID:1]`. *(Diagnostic: StrayCloser)*
+    *   `Output`: `Root (0)` contains `[ID:1]`. *(Diagnostic: StrayCloser)*
 *   **Case: Exponential Numbers**
     *   `Input`: `1e-5kg`
     *   `Symbols`: `{"1e-5kg": 1}`
-    *   `Output`: `Line (2)` contains `[ID:1]`
+    *   `Output`: `Root (0)` contains `[ID:1]`
 
 ---
 
