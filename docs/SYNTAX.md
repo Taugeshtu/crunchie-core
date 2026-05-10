@@ -25,6 +25,11 @@ Use parentheses to control the order of operations.
 ## 4. Physical Conversions
 Use the `to` operator to convert between units.
 *   `100km / 2h to mph`
+*   `5 kg to lbs`
+*   `212 degF to degC`
+
+If the left side is a dimensionless number, the `to` operator acts as an assignment, giving the number a dimension:
+*   `(5k + 3) to cm // evaluates to 5003 cm`
 
 ## 5. Comments
 Use `#` or `//` for notes. Everything from the symbol to the end of the line is ignored by the solver.
@@ -41,8 +46,18 @@ Queries can be combined with variables and conversions for powerful workflows:
 ```
 r = 5cm
 area = PI * r^2
+area = 
 area to mm^2 = 
 ```
 
 ## 7. Error Handling (Poisoning)
 If you make a mistake on one line (like an unclosed parenthesis), Crunchie "Poisons" that line and anything that depends on it. However, independent calculations on other lines will continue to work normally.
+
+## 8. Anti-Patterns (Illegal Math)
+Crunchie leverages a strict physics engine under the hood. It will refuse to evaluate mathematically unsound operations:
+
+*   **Mixing Dimensioned and Dimensionless:** You cannot add or subtract a physical quantity and a raw number.
+    *   `5cm + 3` -> **Poisoned** (Incompatible Dimensions)
+    *   *Fix:* Group the unitless math and apply the unit at the end: `(5 + 3) cm` or `(5 + 3) to cm`.
+*   **Mismatched Dimensions:** You cannot add or subtract units of different physical dimensions.
+    *   `5kg + 10m` -> **Poisoned** (Cannot add Mass and Length)
