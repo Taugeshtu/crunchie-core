@@ -26,14 +26,14 @@ pub struct Unit {
 pub struct Container {
     pub contents: Vec<Unit>,
     /// The ONLY error state the Engine cares about.
-    pub valid: bool,
+    pub corrupted: bool,
 }
 
 impl Default for Container {
     fn default() -> Self {
         Self {
             contents: Vec::new(),
-            valid: true,
+            corrupted: false,
         }
     }
 }

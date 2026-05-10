@@ -42,7 +42,7 @@ The parser is "brainless." It only knows about **Symbols** (interned strings) an
         *   `Container (3)` contains `[ID:1, ID:-8, ID:2]` *(Note: Semicolon is just another ID here)*
 *   **Case: Bad Nesting (Unclosed)**
     *   `Input`: `(5`
-    *   `Output`: `Container (3)` contains `[ID:1]`. `Container(3).valid = false`.
+    *   `Output`: `Container (3)` contains `[ID:1]`. `Container(3).corrupted = true`.
 *   **Case: Bad Nesting (Stray)**
     *   `Input`: `5)`
     *   `Output`: `Line (1)` contains `[ID:1]`. *(Diagnostic: StrayCloser)*
@@ -62,8 +62,8 @@ The Janitor scrubs the topological soup. It flattens "Inert" containers (those w
 *   **Case: Sequence Trimming**
     *   `Input`: `Container(1)` contains `[ID:-7 (,), ID:1 (x), ID:-9 (\n)]`
     *   `Output`: `Container(1)` contains `[ID:1]` *(Diagnostics: StraySequence)*
-*   **Case: Valid Empty Statement**
-    *   `Input`: `Container(1)` is empty but marked as a valid statement (e.g., `()`)
+*   **Case: Healthy Empty Statement**
+    *   `Input`: `Container(1)` is empty but marked as a healthy statement (e.g., `()`)
     *   `Output`: `Container(1)` is preserved.
 
 ---
@@ -98,7 +98,7 @@ The Distiller processes the cleaned contents of a single container at a time. It
     *   `Output`: `[Variable("kg123")]`
 *   **Case: Poisoning**
     *   `Input`: `(1.2.3)`
-    *   `Output`: `[Poison]` *(Diagnostic: InvalidNumber)*
+    *   `Output`: `[Poison]` *(Diagnostic: MalformedNumber)*
 *   **Case: Operators**
     *   `Input`: `(x, =, (), *, 5)`
     *   `Output`: `[Variable("x"), Operator(Assign), Group(...), Operator(Mul), Quantity(5)]`

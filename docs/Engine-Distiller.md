@@ -18,7 +18,7 @@ The Distiller acts as the semantic bridge. It is purely a **typization** stage. 
     *   `PhysUnit`: A valid standalone physical unit recognized by the Numbat registry.
     *   `Function`: A mathematical function (e.g., sin, sqrt).
     *   `Operator`: Structural and mathematical tokens (+, -, =, to, etc.).
-    *   `Poison`: A symbol of error injected when typization fatally fails (e.g., malformed numbers or invalid alphanumeric monoliths).
+    *   `Poison`: A symbol of error injected when typization fatally fails (e.g., malformed numbers or malformed alphanumeric monoliths).
 *   **Refinement**: Enriches the topological containers by translating their raw IDs into semantic `SemanticUnit`s, preserving the original groupings and lines for the Unroller.
 
 ## Algorithm

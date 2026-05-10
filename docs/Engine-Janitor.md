@@ -36,9 +36,9 @@ Once the `children_rebuilding` vector is fully populated and normalized, the Jan
 
 *   **Empty Line Disposal**: If this is a Line container (a direct child of Root) and the vec is completely empty, return `None`. It is discarded entirely.
 *   **Inert Container Flattening**: If this is a nested container (not Root, not Line) and the vec contains *exactly one* Unit (e.g., `(5)` or `(x)`), it is "Inert." Do not create a container. Simply return `Some(Unit)` containing that single item's ID and original offset to the parent.
-*   **Promotion (Valid Container)**: If the container has multiple items, or if it is an intentionally empty nested container (e.g., `()`, representing an empty statement), it is valid.
+*   **Promotion (Uncorrupted Container)**: If the container has multiple items, or if it is an intentionally empty nested container (e.g., `()`, representing an empty statement), it is healthy.
     *   Allocate a new container ID using `next_id`.
-    *   Insert a new `Container` into the map using the `children_rebuilding` vec, preserving the `valid` (poison) state from the raw container.
+    *   Insert a new `Container` into the map using the `children_rebuilding` vec, preserving the `corrupted` (poison) state from the raw container.
     *   Return `Some(Unit { id: new_id, offset: original_offset })` to the parent.
 
 ### 5. Final Assembly

@@ -59,8 +59,8 @@ fn test_unclosed_container() {
     let builtins = builtins::generate_symbol_map();
     let result = parse("x = (5", &builtins, std::iter::empty::<&str>());
     
-    // Check that the nested container (ID 3) is marked invalid
+    // Check that the nested container (ID 3) is marked corrupted
     let container = result.containers.get(&3).unwrap();
-    assert!(!container.valid);
+    assert!(container.corrupted);
     assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::UnclosedContainer)));
 }

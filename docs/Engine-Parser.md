@@ -28,4 +28,4 @@ As it consumes characters, it follows these primary rules:
 *   **Symbol Flushing**: Any non-structural character (alphanumeric) is accumulated into an `active_sym` buffer. This buffer is "flushed" into the current container whenever a structural character (operator, parenthesis, space) is hit.
 
 ### 3. Error Recovery (Poisoning)
-If the buffer ends while the stack depth is greater than 2, the parser doesn't crash. It pops the remaining containers and marks them as `valid: false`. This "Poison" flag tells the rest of the engine to ignore these branches while still attempting to solve independent lines.
+If the buffer ends while the stack depth is greater than 2, the parser doesn't crash. It pops the remaining containers and marks them as `corrupted: true`. This "Poison" flag tells the rest of the engine to ignore these branches while still attempting to solve independent lines.

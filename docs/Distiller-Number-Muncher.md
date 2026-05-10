@@ -27,7 +27,7 @@ The Muncher is a strict, left-to-right character consumer. It attempts to build 
 
 ### Phase 2: Numeric Evaluation
 If a `Number String` was successfully isolated, the Muncher attempts to parse it into an `f64`.
-*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[SemanticUnit::Poison]`. The engine will flag this with an `InvalidNumber` diagnostic.
+*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[SemanticUnit::Poison]`. The engine will flag this with an `MalformedNumber` diagnostic.
 *   If the parse succeeds, we now hold a valid `f64` value.
 
 ### Phase 3: Suffix Resolution & Expansion

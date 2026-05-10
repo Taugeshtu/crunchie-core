@@ -240,7 +240,7 @@ pub fn sweep<'a>(
     while state.stack.len() > 2 {
         if let Some(cid) = state.stack.pop() {
             if let Some(container) = state.result.containers.get_mut(&cid) {
-                container.valid = false;
+                container.corrupted = true;
             }
             
             let eof_pos = crate::model::Position { 
