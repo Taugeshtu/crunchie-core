@@ -33,12 +33,12 @@ If a `Number String` was successfully isolated, the Muncher attempts to parse it
 ### Phase 3: Suffix Resolution & Expansion
 Now the Muncher analyzes the `Suffix String` (if any exists) against the Numbat registry (`known_units`).
 
-1. **No Suffix**: Return `[Quantity(val, None)]`. (If there was no number either, this case shouldn't be possible as the string would be empty).
-2. **SI Unitless Multiplier**: If the suffix is exactly `k`, `K`, or `M`, it acts as a shorthand multiplier. Return `[Quantity(val * multiplier, None)]`.
-3. **Pure Physical Unit**: If the suffix exists in `known_units` (e.g., `kg`), return `[Quantity(val, None), PhysUnit("kg")]`. *(Note: The Unroller will later resolve these via implicit multiplication).*
+1. **No Suffix**: Return `[Quantity(val)]`. (If there was no number either, this case shouldn't be possible as the string would be empty).
+2. **SI Unitless Multiplier**: If the suffix is exactly `k`, `K`, or `M`, it acts as a shorthand multiplier. Return `[Quantity(val * multiplier)]`.
+3. **Pure Physical Unit**: If the suffix exists in `known_units` (e.g., `kg`), return `[Quantity(val), PhysUnit("kg")]`. *(Note: The Unroller will later resolve these via implicit multiplication).*
 4. **Power Suffix Expansion (The `cm3` Rule)**: 
     *   If the suffix ends in a single digit (`2`, `3`, `4`, or `5`), split the suffix into a `prefix` ("cm") and a `power` (3).
-    *   If the `prefix` exists in `known_units`, expand the syntax! Return `[Quantity(val, None), PhysUnit("cm"), Operator(Pow), Quantity(3, None)]`.
+    *   If the `prefix` exists in `known_units`, expand the syntax! Return `[Quantity(val), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
 5. **The "Garbage" Fallback**: If the suffix is "garbage" (e.g., `kg123`, `daysofstatic`) and a `Number String` was already consumed, the Muncher aborts. Return `[SemanticUnit::Poison]` and append a `MalformedSymbol` diagnostic. If there was *no* number to begin with (e.g., the original symbol was just `x`), treat the whole string as an identifier. Return `[Variable("x")]`.
 
 ## Handling the "Cute Cursed" Cases

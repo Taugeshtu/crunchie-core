@@ -1,6 +1,6 @@
 # Unified Identity Space
 
-The Crunchie Engine uses a partitioned ID space to allow for high-performance symbol categorization. By checking the range of an ID, the engine can immediately determine its "quadrant" without performing string comparisons.
+The Crunchie Engine uses a unified partitioned ID space to allow for high-performance symbol categorization. By checking the range of an ID, the engine can immediately determine its "quadrant" without performing string comparisons.
 
 | ID Range | Occupant Type | Range Logic |
 | :--- | :--- | :--- |
