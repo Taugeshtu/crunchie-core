@@ -5,10 +5,12 @@ pub mod builtins;
 pub mod janitor;
 pub mod distiller;
 pub mod unroller;
+pub mod engine;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use engine::Engine;
 
 /// Stage 1: Structural Extraction
 /// Performs the One-Pass Sweep. Returns a structural tree.
@@ -28,9 +30,8 @@ pub fn janitor(workspace: &mut Workspace) {
 
 /// Stage 2.2: The Distiller
 /// Assigns roles to symbols and marries values to their units.
-pub fn distiller(workspace: &mut Workspace) {
-    let units = distiller::get_default_units();
-    distiller::distill(workspace, &units);
+pub fn distiller(workspace: &mut Workspace, known_units: &HashSet<String>) {
+    distiller::distill(workspace, known_units);
 }
 
 /// Stage 2.3: The Unroller
@@ -47,9 +48,9 @@ pub fn unroller(workspace: &mut Workspace) {
 
 /// Stage 2: Semantic Analysis & Evaluation
 /// Processes the Workspace, evaluates the math, and finds errors.
-pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config) -> EngineResult {
+pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config, known_units: &HashSet<String>) -> EngineResult {
     janitor(workspace);
-    distiller(workspace);
+    distiller(workspace, known_units);
     unroller(workspace);
     // executioner(workspace, config)
     EngineResult::default()
@@ -67,8 +68,11 @@ pub fn process_buffer(text: &str, config: &Config) -> (String, Vec<model::Diagno
     let builtins = builtins::generate_symbol_map();
     let constants = config.constants.keys().map(|s| s.as_str());
 
+    let engine = Engine::bootstrap();
+    let units = engine.get_unit_names();
+
     let mut workspace = parse(text, &builtins, constants);
-    let mut engine_result = evaluate(text, &mut workspace, config);
+    let mut engine_result = evaluate(text, &mut workspace, config, &units);
 
 
     // Merge diagnostics from parsing and engine

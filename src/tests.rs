@@ -64,11 +64,12 @@ fn test_distiller_basics() {
     let builtins = builtins::generate_symbol_map();
     let config = config::Config::default();
     let constants = config.constants.keys().map(|s| s.as_str());
+    let units = distiller::get_default_units();
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
         janitor(&mut workspace);
-        distiller(&mut workspace);
+        distiller(&mut workspace, &units);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
@@ -80,9 +81,10 @@ fn test_distiller_basics() {
 #[test]
 fn test_distiller_poison() {
     let builtins = builtins::generate_symbol_map();
+    let units = distiller::get_default_units();
     
     let mut workspace = parse("1.2.3", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace);
+    distiller(&mut workspace, &units);
     
     assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedNumber)));
@@ -91,9 +93,10 @@ fn test_distiller_poison() {
 #[test]
 fn test_distiller_malformed_symbol() {
     let builtins = builtins::generate_symbol_map();
+    let units = distiller::get_default_units();
     
     let mut workspace = parse("65kg123", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace);
+    distiller(&mut workspace, &units);
     
     assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
@@ -159,11 +162,12 @@ fn test_unroller_basics() {
     let builtins = builtins::generate_symbol_map();
     let config = config::Config::default();
     let constants = config.constants.keys().map(|s| s.as_str());
+    let units = distiller::get_default_units();
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
         janitor(&mut workspace);
-        distiller(&mut workspace);
+        distiller(&mut workspace, &units);
         unroller(&mut workspace);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
