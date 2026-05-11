@@ -87,11 +87,11 @@ fn test_distiller_poison() {
     distiller(&mut workspace, &units);
     
     assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
-    assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedNumber)));
+    assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
 }
 
 #[test]
-fn test_distiller_malformed_symbol() {
+fn test_distiller_smart_splitting_garbage() {
     let builtins = builtins::generate_symbol_map();
     let units = distiller::get_default_units();
     
@@ -154,6 +154,8 @@ fn test_unroller_basics() {
     let cases = [
         ("1 + 2 * 3", r#"[["I:Mul(Q:2, Q:3)", "I:Add(Q:1, I:Mul(Q:2, Q:3))"]]"#),
         ("5 cm", r#"[["I:Mul(Q:5, U:cm)"]]"#),
+        ("5 PI", r#"[["I:Mul(Q:5, C:PI)"]]"#),
+        ("x = 10; 5x", r#"[["I:Assign(V:x, Q:10)"], ["I:Mul(Q:5, V:x)"]]"#),
         ("x = 5", r#"[["I:Assign(V:x, Q:5)"]]"#),
         ("x = ", r#"[["I:Assign(V:x)"]]"#),
         ("sin(PI)", r#"[["I:Call(F:sin, C:PI)"]]"#),

@@ -27,7 +27,7 @@ The Muncher is a strict, left-to-right character consumer. It attempts to build 
 
 ### Phase 2: Numeric Evaluation
 If a `Number String` was successfully isolated, the Muncher attempts to parse it into an `f64`.
-*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[Symbol::Poison]`. The engine will flag this with an `MalformedNumber` diagnostic.
+*   If the parse fails (e.g., multiple decimal points like `1.2.3`), the Muncher immediately aborts and returns `[Symbol::Poison]`. The engine will flag this with a `MalformedSymbol` diagnostic.
 *   If the parse succeeds, we now hold a valid `f64` value.
 
 ### Phase 3: Suffix Resolution & Expansion
@@ -35,15 +35,17 @@ Now the Muncher analyzes the `Suffix String` (if any exists) against the Numbat 
 
 1. **No Suffix**: Return `[Quantity(val)]`. (If there was no number either, this case shouldn't be possible as the string would be empty).
 2. **SI Unitless Multiplier**: If the suffix is exactly `k`, `K`, or `M`, it acts as a shorthand multiplier. Return `[Quantity(val * multiplier)]`.
-3. **Pure Physical Unit**: If the suffix exists in `known_units` (e.g., `kg`), return `[Quantity(val), PhysUnit("kg")]`. *(Note: The Unroller will later resolve these via implicit multiplication).*
-4. **Power Suffix Expansion (The `cm3` Rule)**: 
+3. **Pure Physical Unit**: If the suffix exists in `known_units` (e.g., `kg`), return `[Quantity(val), PhysUnit("kg")]`.
+4. **Known Symbol**: If the suffix exists in `known_identifiers` (e.g., a constant like `PI` or a previously defined variable), return `[Quantity(val), Variable(suffix)]`.
+5. **Power Suffix Expansion (The `cm3` Rule)**: 
     *   If the suffix ends in a single digit (`2`, `3`, `4`, or `5`), split the suffix into a `prefix` ("cm") and a `power` (3).
     *   If the `prefix` exists in `known_units`, expand the syntax! Return `[Quantity(val), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
-5. **The "Garbage" Fallback**: If the suffix is "garbage" (e.g., `kg123`, `daysofstatic`) and a `Number String` was already consumed, the Muncher aborts. Return `[Symbol::Poison]` and append a `MalformedSymbol` diagnostic. If there was *no* number to begin with (e.g., the original symbol was just `x`), treat the whole string as an identifier. Return `[Variable("x")]`.
+6. **The "Garbage" Fallback**: If a `Number String` was consumed but the `Suffix String` is unknown (not a unit or known symbol), the Muncher assumes the entire string is a single identifier. Return `[Variable(original_string)]`. This prevents accidental splitting of identifiers like `3d_model`.
 
 ## Handling the "Cute Cursed" Cases
 Because the Muncher is a complete function that resolves semantics, it handles edge cases perfectly:
 *   **Case: `10cm3`** -> Munch isolates `10` and `cm3`. `cm3` expands. Returns `[Quantity(10), PhysUnit("cm"), Operator(Pow), Quantity(3)]`.
-*   **Case: `65kg123`** -> Munch isolates `65` and `kg123`. `kg123` is not a valid unit or multiplier. Returns `[Symbol::Poison]` (Diagnostic: `MalformedSymbol`).
+*   **Case: `5x` (where x is known)** -> Returns `[Quantity(5), Variable("x")]`.
+*   **Case: `5x` (where x is unknown)** -> Returns `[Variable("5x")]`.
 *   **Case: `5M`** -> Munch isolates `5` and `M`. Returns `[Quantity(5_000_000)]`.
 *   **Case: `x`** -> Munch isolates no number. Returns `[Variable("x")]`.

@@ -22,7 +22,6 @@ pub enum DiagnosticCode {
     UnclosedContainer,
     IllegalCharacter,
     StraySequence,
-    MalformedNumber,
     MalformedSymbol,
 }
 

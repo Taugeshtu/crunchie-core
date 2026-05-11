@@ -33,6 +33,8 @@ The Unroller processes a line's `Entity` list left-to-right to resolve mathemati
 **Bumping Elbows (Implicit Multiplication):**
 Between every two units `A` and `B`, the Unroller checks for a missing operator. If it detects one of the following pairs, it synthetically injects a `*` (Precedence 2) into the Operator Stack before processing `B`:
 *   `Quantity` + `PhysUnit` (e.g., `5 cm`)
+*   `Quantity` + `Variable` (e.g., `5x`)
+*   `Quantity` + `Constant` (e.g., `5 PI`)
 *   `Quantity` + `ContainerRef` (e.g., `5(1+2)`)
 *   `ContainerRef` + `ContainerRef` (e.g., `(2)(3)`)
 

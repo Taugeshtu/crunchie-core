@@ -63,6 +63,8 @@ fn should_inject_mul(left: EntityKind, right: EntityKind) -> bool {
     match (left, right) {
         (EntityKind::Quantity, EntityKind::PhysUnit) => true,
         (EntityKind::Quantity, EntityKind::ContainerRef) => true,
+        (EntityKind::Quantity, EntityKind::Variable) => true,
+        (EntityKind::Quantity, EntityKind::Constant) => true,
         (EntityKind::ContainerRef, EntityKind::ContainerRef) => true,
         _ => false,
     }
