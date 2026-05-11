@@ -73,7 +73,9 @@ pub fn sweep<'a>(
     // 1. Initialization
     for (k, v) in builtins {
         state.workspace.intern_map.insert(k.clone(), *v);
-        let sym = if *v <= builtins::FUNCTIONS_START_ID {
+        let sym = if *v >= builtins::CONSTANTS_START_ID {
+            Symbol::Constant(k.clone())
+        } else if *v <= builtins::FUNCTIONS_START_ID {
             Symbol::Function(k.clone())
         } else if *v <= -1 {
             if let Some(op) = builtins::get_operator(k) {
@@ -89,9 +91,11 @@ pub fn sweep<'a>(
 
     let mut current_constant_id = builtins::CONSTANTS_START_ID;
     for c in constants {
-        state.workspace.intern_map.insert(c.to_string(), current_constant_id);
-        state.workspace.symbols.insert(current_constant_id, Symbol::Constant(c.to_string()));
-        current_constant_id += 1;
+        if !state.workspace.intern_map.contains_key(c) {
+            state.workspace.intern_map.insert(c.to_string(), current_constant_id);
+            state.workspace.symbols.insert(current_constant_id, Symbol::Constant(c.to_string()));
+            current_constant_id += 1;
+        }
     }
     
     // 2. Bootstrapping the Root
