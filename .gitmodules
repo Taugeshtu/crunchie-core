@@ -1,3 +1,0 @@
-[submodule "dependencies/fend"]
-	path = dependencies/fend
-	url = https://github.com/printfn/fend
