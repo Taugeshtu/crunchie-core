@@ -40,8 +40,8 @@ pub fn unroller(workspace: &mut Workspace) {
     unroller::unroll(workspace);
 }
 
-/// Stage 2.4: The Executioner
-/// Final pass that performs the actual computation.
+/// Stage 4: The Executioner
+/// Final pass that performs the actual computation using Fend.
 // pub fn executioner(_tape: model::Tape, _config: &Config) -> EngineResult {
 //     EngineResult::default() // Stub
 // }

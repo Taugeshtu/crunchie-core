@@ -1,4 +1,4 @@
-use numbat::{Context, resolver::CodeSource, module_importer::BuiltinModuleImporter};
+use fend_core::Context;
 use std::collections::HashSet;
 
 pub struct Engine {
@@ -7,24 +7,14 @@ pub struct Engine {
 
 impl Engine {
     pub fn bootstrap() -> Self {
-        let mut ctx = Context::new(BuiltinModuleImporter::default());
-        
-        // Load the SI units prelude
-        let result = ctx.interpret("use units::si", CodeSource::Internal);
-        if let Err(e) = result {
-            eprintln!("Failed to load SI units: {:?}", e);
-        }
-        
+        let ctx = Context::new();
         Self { ctx }
     }
 
     pub fn get_unit_names(&self) -> HashSet<String> {
-        let mut units = HashSet::new();
-        for unit_group in self.ctx.unit_names() {
-            for alias in unit_group {
-                units.insert(alias.to_string());
-            }
-        }
-        units
+        // Fend doesn't expose a simple list of unit names in the same way Numbat does.
+        // For now, we'll return an empty set or a common subset.
+        // In the future, we might want to hardcode common units or find a way to query Fend.
+        HashSet::new()
     }
 }
