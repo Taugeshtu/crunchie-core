@@ -1,73 +1,73 @@
 # Engine Stage: Unroller
 
-The Unroller transforms the hierarchical, parenthetical structure of a `Container` into a flat, linear sequence of instructions. In the Unified Workspace model, it operates by reading `Entity` IDs, looking up their `Symbol` meanings, and minting new `Instruction` symbols back into the workspace.
+The Unroller transforms the hierarchical, parenthetical structure of a `Container` into a flat, linear sequence of instructions (the **Tape**). It resolves mathematical precedence and allocates **Virtual Registers** using the Workspace's ID space.
 
 ## Contract
 
-*   **Input**: `Workspace` (Distilled)
-*   **Output**: `Workspace` (Unrolled)
+*   **Input / Output**: `&mut Workspace`.
+*   **Mutation**: Mints new `Atom::Instruction` entries and replaces Line containers with "Tape" containers.
 
 ## Innards
 
-*   **Precedence Resolution**: A Shunting-Yard algorithm that handles the order of operations without a recursive AST.
-*   **Implicit Multiplication**: In-flight detection of "Bumping Elbows" between adjacent semantic entities.
-*   **Register Allocation**: Manages intermediate results by minting new `Instruction` symbols, allowing the Executioner to be a simple, non-stack-based loop.
-*   **Provenance Preservation**: Copies the `offset` from the source entities to the generated instruction entities for accurate error reporting.
+*   **Instruction IDs as Registers**: Every minted `Atom::Instruction` is assigned a new ID. This ID serves as a **Virtual Register**. Downstream instructions that depend on a previous result simply use that instruction's ID as an argument.
+*   **Implicit Multiplication**: In-flight detection of "Bumping Elbows" between adjacent entities (e.g., `5x`).
+*   **Variable Preservation**: Assignments (e.g., `x = 5`) do **not** mutate the `Atom::Variable` into a value. Instead, they produce an `Equals` instruction. The actual value of the variable is managed by the Executioner's transient context during the solve loop.
 
 ## Algorithm
 
-The Unroller iterates through the direct children of the Root container (the Lines). For each Line, it performs a two-pass transformation. 
+The Unroller processes each Line container in the Root. For each line, it performs a recursive RPN conversion followed by instruction minting.
 
-*Note: The Unroller assumes the Distiller has successfully converted all `Symbol::Raw` entries into typed symbols (Quantity, Variable, PhysUnit, Constant, Function, or Operator). Any remaining `Raw` strings are treated as fatal errors.*
-
-### 1. The Precedence Pass (Shunting-Yard)
-The Unroller processes a line's `Entity` list left-to-right to resolve mathematical priority. It maintains an **Operator Stack** (IDs of operators) and an **Output Queue** (IDs of operands and resolved operators).
+### 1. The Precedence Pass (Recursive RPN)
+The Unroller uses a Shunting-Yard algorithm to resolve order of operations. 
 
 **Precedence Levels (High to Low):**
-1. `^` (Power)
-2. `*`, `/`, `Implicit Mul`
-3. `+`, `-`
-4. `to` (Conversion)
-5. `=` (Assignment/Assertion/Query)
+1. `Call` (Function invocation)
+2. `^` (Power)
+3. `*`, `/`, `Mod`
+4. `+`, `-`
+5. `to` (Conversion)
+6. `=`, `+=`, `-=`, etc. (Assignments)
+7. `,` (Comma / Argument separator)
 
 **Bumping Elbows (Implicit Multiplication):**
-Between every two units `A` and `B`, the Unroller checks for a missing operator. If it detects one of the following pairs, it synthetically injects a `*` (Precedence 2) into the Operator Stack before processing `B`:
-*   `Quantity` + `PhysUnit` (e.g., `5 cm`)
-*   `Quantity` + `Variable` (e.g., `5x`)
-*   `Quantity` + `Constant` (e.g., `5 PI`)
-*   `Quantity` + `ContainerRef` (e.g., `5(1+2)`)
-*   `ContainerRef` + `ContainerRef` (e.g., `(2)(3)`)
+Between every two entities `A` and `B`, the Unroller checks for a missing operator. If it detects one of the following pairs, it synthetically injects a `*` (Precedence 3) into the flow:
+*   `Value` + `Container` (e.g., `5(1+2)`)
+*   `Value` + `Variable` (e.g., `5x`)
+*   `Value` + `Constant` (e.g., `5 PI`)
+*   `Container` + `Container` (e.g., `(2)(3)`)
+*   `Container` + `Variable` (e.g., `(2)x`)
 
-**The Sorting Dance:**
-*   **Operands** (`Quantity`, `Variable`, `Constant`, `PhysUnit`): Push ID directly to the Output Queue.
-*   **Nested Containers (`ContainerRef`)**: Recursively process the inner container. The resulting RPN sequence is spliced into the current Output Queue.
+**The Sorting Dance**:
+*   **Operands** (`Value`, `Variable`, `Constant`): Push to the Output Queue.
+*   **Nested Containers**: Recursively call the RPN logic. The resulting sequence is spliced into the current Output Queue.
+*   **Functions**: Pushed to the Operator Stack.
 *   **Operators**: 
-    1. While the operator on top of the Stack has **higher or equal** precedence than the current operator, pop the Stack to the Output Queue.
+    1. While the operator on top of the Stack has **higher or equal** precedence, pop it to the Output Queue.
     2. Push the current operator onto the Stack.
-*   **Finalization**: Pop any remaining operators from the Stack to the Output Queue.
 
 ### 2. The Instruction Pass (Tape Generation)
 The Unroller iterates through the flat RPN Queue and uses a **Value Stack** (IDs of operands or previous instructions) to mint the final linear bytecode.
 
-1.  **Process RPN Queue**:
+1.  **Consume RPN**:
     *   **If Operand ID**: Push to the Value Stack.
-    *   **If Operator ID**:
-        *   Pop the required number of operand IDs (e.g., `left`, `right`).
-        *   Mint a new `Symbol::Instruction { op, args: [left, right] }` in `Workspace.symbols`.
-        *   Store the provenance `offset` from the operator entity.
-        *   Push the `new_id` of this instruction back onto the Value Stack.
+    *   **If Operator/Function ID**:
+        *   Pop the required number of IDs from the Value Stack (e.g., `left`, `right`).
+        *   Mint a new `Atom::Instruction { op, args: [left, right] }`.
+        *   Assign it a new ID and push that ID back onto the Value Stack.
 2.  **Commit the Tape**:
-    *   The Unroller creates a new `Container` to hold the linear sequence.
-    *   It populates this container's `contents` with the `Entity` IDs of the instructions in the order they were minted.
-    *   The original line's `ContainerRef` is updated to point to this new "Tape" container.
+    *   A new **Tape Container** is created to hold the sequence of instruction IDs in the order they were minted.
+    *   The original line's `Atom::Container` pointer is updated to point to this new Tape.
 
-### 3. Special Logic: The Big Cleaver (`=`)
-The `=` operator acts as the absolute lowest precedence marker. 
-*   **Assignment**: If the LHS of the final instruction is a single `Variable` and the operator is `=`, the Unroller marks this instruction as an `Assignment` in the `Workspace`.
-*   **Queries**: If an `=` is followed by nothing (end of line), the Unroller identifies the last register ID on the stack and flags it as a `Query` for the Executioner to fill.
+### 3. Queries and Assignments
+The Unroller identifies the "Intent" of a line by looking at the final instruction:
+*   **Assignment**: An `Equals` instruction where the first argument is an `Atom::Variable`.
+*   **Query**: An instruction or value that stands alone without being assigned to a variable. The Executioner uses the ID of the final item on the Value Stack as the "Result Register" to report back to the UI.
 
-### 4. Errors & Diagnostics
-The Unroller appends `MalformedExpression` diagnostics to the `Workspace` if:
-*   An operator is missing operands (e.g., `5 + `).
-*   The stack contains multiple values at the end of a line (missing operators).
-*   An invalid "Bumping Elbows" pair is detected (e.g., `Variable` + `Quantity`).
+## Errors & Diagnostics
+The Unroller identifies the following errors:
+*   **`MalformedExpression`**:
+    *   The Value Stack is empty when an operator expects an argument.
+    *   The Value Stack has multiple items remaining at the end of a line (e.g., `5 10 + 2` leaves `5` and `(10+2)` on the stack).
+    *   The "Bumping Elbows" logic encounters an illegal pair (e.g., `Variable` + `Value`).
+*   **`ArgumentsMismatch`**:
+    *   The number of arguments provided to a `Call` instruction does not match the arity of the `Atom::Function` (e.g., `sin(1, 2)` or `max(1)`).
