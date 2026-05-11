@@ -1,9 +1,19 @@
-# Crunchie Core
-
 > "Math is a conversation with a buffer, not a series of buttons on a virtual Casio."
 
-Crunchie is a small DSL for everyday light arithmetic, in a text buffer.
-Why? Because it's never *just* "PI times five". You'll need more than one step of calculation. You need context, comments, and variables. Crunchie turns any text buffer into a strict, physically-aware scratchpad where math happens as you think and type.
+Crunchie is a small DSL for everyday light arithmetic, in a text buffer, as a library.
+
+## Why?
+
+Because it's never _just_ "PI times five". You'll need more than one step of calculation. You need context, comments, variables. Crunchie turns any text buffer into a strict, physically-aware scratchpad where math happens as you think and type.
+Power: python/spreadsheet > _Crunchie_ > calculator app
+
+While engines like **Fend** or **Numbat** are brilliant at solving single expressions with complex units, they are often stateless or fragile when it comes to managing a full buffer of interdependent math.
+
+Crunchie provides:
+- **Persistence allowance**: your app can just keep a buffer around, Crunchie will only emit diagnostics and suggested edits if you want them
+- **Poisoning**: If Line 1 is a syntax error, Line 1 is "Poisoned," but Line 2 keeps working. Independent math stays alive.
+- **Orchestration**: We use **Fend-core** as our high-precision arithmetic engine, while Crunchie handles the state, the dependencies, and the "conversation" logic.
+More details in the **[Vision doc](./docs/Vision.md)**.
 
 ## The DSL: A Conversation with a Buffer
 
@@ -28,25 +38,20 @@ area to mm^2 =       // Evaluates to: 31415.9... mm^2
 ```
 
 If you make a mistake, Crunchie **"Poisons"** that specific line and anything dependent on it, but leaves independent math untouched. One typo won't ruin your whole session.
+More details in the **[Syntax Guide](./docs/SYNTAX.md)**.
 
-## Documentation
+## The innards
 
-The detailed architectural specifications can be found in the [`docs/`](./docs/) directory:
+Crunchie-core is a pure, portable library that uses a progressive, linear pipeline to transform text into math. Instead of walking recursive ASTs, it manipulates a flat, cache-friendly array of entities. It should be easy to grok what each stage of the pipeline does by looking into:
+- **[Pipeline Tests](./docs/implementation/PIPELINE_TESTS.md)**: A human-readable test suite for each pipeline stage
+- **[Workspace Data Model](./docs/implementation/Workspace-Data-Model.md)**: The unified flat graph that powers the engine
 
-- **[Vision](./docs/Vision.md)**: The core philosophy of Crunchie.
-- **[Syntax Guide](./docs/SYNTAX.md)**: How to write math in Crunchie.
-- **[Workspace Data Model](./docs/implementation/Workspace-Data-Model.md)**: The unified flat graph that powers the engine.
-- **[Pipeline Tests](./docs/implementation/PIPELINE_TESTS.md)**: A human-readable test suite for each pipeline stage.
-
-## The Pipeline
-
-Crunchie-core is a pure, portable library that uses a progressive, linear pipeline to transform text into math. Instead of walking recursive ASTs, it manipulates a flat, cache-friendly array of entities:
-
+More in-depth docs which are driving the source:
 1. **[Parser (Stage 0)](./docs/implementation/Stage0_Parser.md)**: A "brainless" sweep turning raw text into a structural topology.
 2. **[Janitor (Stage 1)](./docs/implementation/Stage1_Janitor.md)**: Scrubs the topological soup, breaks lines, normalizes sequences.
 3. **[Distiller (Stage 2)](./docs/implementation/Stage2_Distiller.md)**: The semantic bridge; uses the "Number Muncher" to parse units, multipliers, and numbers.
 4. **[Unroller (Stage 3)](./docs/implementation/Stage3_Unroller.md)**: Flattens the hierarchy into a linear tape of instructions using the Shunting-Yard algorithm.
-5. **[Executioner (Stage 4)](./docs/implementation/Stage4_Executioner.md)**: The final pass that talks to the Numbat physics engine to solve the tape.
+5. **[Executioner (Stage 4)](./docs/implementation/Stage4_Executioner.md)**: The final pass that talks to the Fend-core arithmetic engine to solve the tape.
 
 ## Usage
 
@@ -59,3 +64,4 @@ use crunchie_core::process_buffer;
 let config = Config::default();
 let (final_text, diagnostics) = process_buffer(input_text, &config);
 ```
+
