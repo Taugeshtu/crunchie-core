@@ -48,7 +48,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, fmt, io};
 
 use error::FendError;
-pub use eval::Attrs;
+pub use eval::{Attrs, evaluate_to_value};
 pub use interrupt::Interrupt;
 use result::FResult;
 use serialize::{Deserialize, Serialize};
@@ -76,9 +76,9 @@ pub enum SpanKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Span {
-	string: String,
-	kind: SpanKind,
+pub struct Span {
+	pub string: String,
+	pub kind: SpanKind,
 }
 
 impl Span {
