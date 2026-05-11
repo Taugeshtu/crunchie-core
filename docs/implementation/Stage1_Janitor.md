@@ -1,39 +1,49 @@
 # Engine Stage: Janitor
 
-The Janitor is the first transforming pass of the engine. Its job is to scrub the "Topological Soup" provided by the parser, ensuring it is mathematically sane and free of structural noise, acting as both an optimizer and a structural linter.
+The Janitor is the first transforming pass of the engine. Its job is to scrub the "Topological Soup" provided by the parser, acting as an optimizer that simplifies the graph before semantic analysis.
 
 ## Contract
 
-*   **Input / Output**: `&mut Workspace` (mutated in-place).
+*   **Input / Output**: `&mut Workspace` (mutated in-place. Mutation: containers structure).
 
-## Algorithm
+## The Transformations
 
-The Janitor modifies the `Workspace` graph via a Depth-First Traversal (DFT) of the raw topology starting at the root container (ID `0`). Instead of creating containers and deleting them later, the Janitor builds children `Entity` items into temporary vectors and only "commits" them to the `workspace.containers` map if they prove to be structurally significant.
+The Janitor performs two primary transformations to normalize the topology:
 
-### 1. Resolution
-Because the topological representation is flat, the Janitor must resolve each `Entity`'s `id` against `workspace.symbols` to determine its behavior (e.g., whether it is a sequence operator like `\n` or `,`, or a nested `ContainerRef`).
+1.  **Boundary Splitting (Root Only)**: Isolates independent mathematical statements (Lines) by splitting the Root's flat contents at every `\n` or `;`.
+2.  **Recursive Scrubbing (All Containers)**: Simplifies and normalizes every container in the workspace using an **Unwrap-then-Normalize** pattern.
 
-### 2. The Root Split (Line Breaking)
-The Parser's output for the Root Container (ID `0`) is a completely flat list of `Entity` items representing raw chunks, sequence operators (`\n`, `;`), and nested containers. The Janitor's first task is to break this flat list into isolated Line Containers.
-*   Iterate through the Root's `contents`.
-*   Accumulate `Entity` objects into a temporary `current_line` vector.
-*   When a line-breaking sequence operator (`\n` or `;`) is encountered (resolved via `workspace.symbols`):
-    *   If `current_line` is empty, ignore it (this naturally cleans up leading newlines or stutters).
-    *   If `current_line` is not empty, process the `current_line` (see Step 3). Then, use `workspace.next_id` to allocate a new Line container ID, add it to `workspace.containers`, and append a new `ContainerRef` `Entity` to the rebuilt root contents. Clear `current_line`.
-*   When the end of the Root is reached, process and promote any remaining items in `current_line`.
+## The Pass Algorithm
 
-### 3. Depth-First Traversal & Normalization
-For each `Entity` within a line (or within a nested container), the Janitor recurses. 
-*   **Symbols/Operators**: Checked for stuttering. Consecutive sequence operators (like commas) are reduced.
-*   **Nested Containers**: When a `ContainerRef` is resolved, the Janitor recurses into that container in `workspace.containers`, building a new `children_rebuilding` vector.
-    *   Inside nested containers, `\n` and `;` do *not* break lines; instead, they are coerced into canonical `,` sequence operators.
-    *   **Stuttering**: If multiple sequence operators appear consecutively (e.g., `5,,6` or `5,\n6`), keep only one `,`. If the stutter involves an actual redundant comma, push a `StraySequence` to `workspace.diagnostics`.
-    *   **Leading/Trailing**: Trim leading/trailing sequences. Push `StraySequence` if they were explicit `,` or `;`.
+The Janitor executes these transformations in a **single recursive traversal** of the workspace graph:
 
-### 4. Promotion, Flattening, or Disposal
-Once a nested container's `children_rebuilding` vector is populated:
-*   **Inert Container Flattening**: If the vec contains *exactly one* `Entity` (e.g., `(5)` or `(x)`), it is "Inert." Do not promote the container. Simply return the inner `Entity` directly to the parent, completely bypassing the container structure.
-*   **Promotion (Healthy Container)**: If the container has multiple items, or if it is an intentionally empty statement (e.g., `()`), keep the container mapping in `workspace.containers` (updating its contents to the rebuilt vector), and return the `Entity` (the `ContainerRef`) to the parent.
+### 1. Root Entrance
+The Janitor begins at the Root (ID `0`). It scans the flat list of entities and splits them into segments based on `\n` or `;` boundaries. 
 
-### 5. Final Assembly
-The Root container's (ID `0`) `contents` are overwritten with the newly built list of Line container `Entity` references. The mutated `Workspace` is now clean and ready for the Distiller.
+### 2. Recursive Scrubbing
+For each segment (promoted to a Line) and every container encountered during the descent, the Janitor applies the following logic:
+
+#### Step A: Redundant Nesting Collapse ("Unwrapping")
+Before processing children, the Janitor looks for "Container-only" nesting. 
+*   **The Rule**: If a container only contains **a single other container**, replace our contents with the contents of that inner container and **repeat Step A**. 
+*   **Result**: `(((5 + 1)))` collapses level-by-level until it becomes `(5 + 1)`. 
+*   **Poisoning**: The `corrupted` flag is OR'd upward during each collapse to preserve error provenance.
+
+#### Step B: Deep Normalization
+Once the container is unwrapped, the Janitor performs a final normalization of the surviving contents:
+*   **Recurse**: If an entity is a container, immediately call the **Recursive Scrubbing** logic on it.
+*   **Coerce**: Inside the container, any remaining `\n` or `;` atoms are coerced into `,` (Comma) atoms.
+*   **Trim**: Leading, trailing, or consecutive commas are removed (emitting `StraySequence` diagnostics).
+
+## Example Execution
+**Input**: `x = 5; (((y = (x + 3) * max(6; 7)(4))))\ny =`
+
+1.  **Root Pass**: Identifies boundaries. Promotes three lines: `[x = 5]`, `[(((y = ...)))]`, and `[y =]`.
+2.  **Descent (Line 1)**: Normalizes to `x = 5`.
+3.  **Descent (Line 2)**: 
+    *   **Unwrap**: Immediately collapses `(((...)))` into `(y = (x + 3) * max(6; 7)(4))`.
+    *   **Normalize**: Recurses into `(x + 3)` (identity), `max(6; 7)` (coerces `;`), and `(4)` (identity).
+4.  **Descent (Line 3)**: Normalizes to `y =`.
+
+## Final State
+The Workspace is now a lean, line-addressed graph. Redundant nesting is gone, all lines are normalized, and the Distiller can now proceed with semantic analysis on a "clean" topology.
