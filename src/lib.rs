@@ -30,8 +30,8 @@ pub fn janitor(workspace: &mut Workspace) {
 
 /// Stage 2.2: The Distiller
 /// Assigns roles to symbols and marries values to their units.
-pub fn distiller(workspace: &mut Workspace, known_units: &HashSet<String>) {
-    distiller::distill(workspace, known_units);
+pub fn distiller(workspace: &mut Workspace) {
+    distiller::distill(workspace);
 }
 
 /// Stage 2.3: The Unroller
@@ -48,9 +48,9 @@ pub fn unroller(workspace: &mut Workspace) {
 
 /// Stage 2: Semantic Analysis & Evaluation
 /// Processes the Workspace, evaluates the math, and finds errors.
-pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config, known_units: &HashSet<String>) -> EngineResult {
+pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config) -> EngineResult {
     janitor(workspace);
-    distiller(workspace, known_units);
+    distiller(workspace);
     unroller(workspace);
     // executioner(workspace, config)
     EngineResult::default()
@@ -68,11 +68,8 @@ pub fn process_buffer(text: &str, config: &Config) -> (String, Vec<model::Diagno
     let builtins = builtins::generate_symbol_map();
     let constants = config.constants.keys().map(|s| s.as_str());
 
-    let engine = Engine::bootstrap();
-    let units = engine.get_unit_names();
-
     let mut workspace = parse(text, &builtins, constants);
-    let mut engine_result = evaluate(text, &mut workspace, config, &units);
+    let mut engine_result = evaluate(text, &mut workspace, config);
 
 
     // Merge diagnostics from parsing and engine

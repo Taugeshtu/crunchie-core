@@ -1,8 +1,9 @@
+use crate::model::{OpCode, FendOp};
 use std::collections::HashMap;
 
 pub const PUNCTUATION_OPERATORS: &[&str] = &[
-    "+=", "-=", ">=", "<=", "==", "!=", ">>", "<<",
-    "+", "-", "*", "/", "=", "^", ",", ";", "\n"
+    "+=", "-=", "*=", "/=", ">=", "<=", "==", "!=", ">>", "<<",
+    "+", "-", "*", "/", "=", "^", ",", ";", "\n", ">", "<"
 ];
 pub const ALPHANUMERIC_OPERATORS: &[&str] = &["to"];
 pub const FUNCTIONS: &[&str] = &["sin", "cos", "tan", "log", "sqrt"];
@@ -11,9 +12,35 @@ pub const ILLEGAL_CHARS: &[char] = &['~', '`', '@', '[', ']', '{', '}', '\\', '|
 pub const FUNCTIONS_START_ID: i32 = -1_000_000;
 pub const CONSTANTS_START_ID: i32 = 1_000_000;
 
+pub fn get_operator(s: &str) -> Option<OpCode> {
+    match s {
+        "+" => Some(OpCode::Fend(FendOp::Add)),
+        "-" => Some(OpCode::Fend(FendOp::Sub)),
+        "*" => Some(OpCode::Fend(FendOp::Mul)),
+        "/" => Some(OpCode::Fend(FendOp::Div)),
+        "^" => Some(OpCode::Fend(FendOp::Pow)),
+        "=" => Some(OpCode::Fend(FendOp::Equals)),
+        "==" => Some(OpCode::Fend(FendOp::DoubleEquals)),
+        "!=" => Some(OpCode::Fend(FendOp::NotEquals)),
+        ">>" => Some(OpCode::Fend(FendOp::ShiftRight)),
+        "<<" => Some(OpCode::Fend(FendOp::ShiftLeft)),
+        "to" => Some(OpCode::Fend(FendOp::To)),
+        ";" => Some(OpCode::Fend(FendOp::Semicolon)),
+        "\n" => Some(OpCode::Sequence),
+        "," => Some(OpCode::Comma),
+        ">" => Some(OpCode::Greater),
+        "<" => Some(OpCode::Less),
+        ">=" => Some(OpCode::GreaterEqual),
+        "<=" => Some(OpCode::LessEqual),
+        "+=" => Some(OpCode::AddAssign),
+        "-=" => Some(OpCode::SubAssign),
+        "*=" => Some(OpCode::MulAssign),
+        "/=" => Some(OpCode::DivAssign),
+        _ => None,
+    }
+}
+
 /// Generates the initial symbol map containing operators and functions.
-/// Operators get IDs -1 and down.
-/// Functions get IDs FUNCTIONS_START_ID and down.
 pub fn generate_symbol_map() -> HashMap<String, i32> {
     let mut m = HashMap::new();
     

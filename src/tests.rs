@@ -1,16 +1,25 @@
 use super::*;
 use std::collections::HashMap;
+use fend_core::{Context, Attrs, interrupt::Never};
 
 /// Helper to turn the flat topology back into nested vectors for easy assertions,
 /// matching the logic from the Python prototype's `reconstruct` function.
 fn resolve_symbol(id: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> serde_json::Value {
+    let mut ctx = Context::new();
+    let int = Never;
+    let attrs = Attrs::default();
+
     match workspace.symbols.get(&id) {
         Some(model::Symbol::ContainerRef(child_cid)) => {
             serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern))
         }
-        Some(model::Symbol::Quantity(q)) => serde_json::Value::String(format!("Q:{}", q)),
-        Some(model::Symbol::Variable(v)) => serde_json::Value::String(format!("V:{}", v)),
-        Some(model::Symbol::PhysUnit(u)) => serde_json::Value::String(format!("U:{}", u)),
+        Some(model::Symbol::Value(v)) => {
+            let mut spans = Vec::new();
+            v.format(0, &mut spans, attrs, false, &mut ctx, &int).unwrap();
+            let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
+            serde_json::Value::String(format!("V:{}", formatted))
+        }
+        Some(model::Symbol::Variable(v)) => serde_json::Value::String(format!("VAR:{}", v)),
         Some(model::Symbol::Operator(op)) => serde_json::Value::String(format!("O:{:?}", op)),
         Some(model::Symbol::Constant(c)) => serde_json::Value::String(format!("C:{}", c)),
         Some(model::Symbol::Function(f)) => serde_json::Value::String(format!("F:{}", f)),
@@ -52,24 +61,25 @@ fn reconstruct(workspace: &Workspace) -> Vec<serde_json::Value> {
 #[test]
 fn test_distiller_basics() {
     let cases = [
-        ("5", r#"[["Q:5"]]"#),
-        ("x = 5kg", r#"[["V:x", "O:Assign", "Q:5", "U:kg"]]"#),
-        ("10cm3", r#"[["Q:10", "U:cm", "O:Pow", "Q:3"]]"#),
-        ("0xFF", r#"[["Q:255"]]"#),
-        ("5M", r#"[["Q:5000000"]]"#),
-        ("5 + 2", r#"[["Q:5", "O:Add", "Q:2"]]"#),
-        ("sin(PI)", r#"[["F:sin", "C:PI"]]"#), // Flattened by Janitor
+        ("5", r#"[["V:5"]]"#),
+        ("x = 5kg", r#"[["VAR:x", "O:Fend(Equals)", ["V:5", "VAR:kg"]]]"#),
+        ("10cm3", r#"[ [ ["V:10", "VAR:cm3"] ] ]"#), 
+        ("0xFF", r#"[["V:0xff"]]"#),
+        ("5M", r#"[ [ ["V:5", "VAR:M"] ] ]"#),
+        ("5 + 2", r#"[["V:5", "O:Fend(Add)", "V:2"]]"#),
+        ("sin(PI)", r#"[["F:sin", ["C:PI"]]]"#),
+        ("cos(TAU)", r#"[["F:cos", ["C:TAU"]]]"#),
+        ("sqrt(E)", r#"[["F:sqrt", ["C:E"]]]"#),
     ];
 
     let builtins = builtins::generate_symbol_map();
     let config = config::Config::default();
     let constants = config.constants.keys().map(|s| s.as_str());
-    let units = distiller::get_default_units();
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
         janitor(&mut workspace);
-        distiller(&mut workspace, &units);
+        distiller(&mut workspace);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
@@ -81,10 +91,9 @@ fn test_distiller_basics() {
 #[test]
 fn test_distiller_poison() {
     let builtins = builtins::generate_symbol_map();
-    let units = distiller::get_default_units();
     
     let mut workspace = parse("1.2.3", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace, &units);
+    distiller(&mut workspace);
     
     assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
@@ -93,10 +102,9 @@ fn test_distiller_poison() {
 #[test]
 fn test_distiller_smart_splitting_garbage() {
     let builtins = builtins::generate_symbol_map();
-    let units = distiller::get_default_units();
     
     let mut workspace = parse("65kg123", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace, &units);
+    distiller(&mut workspace);
     
     assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
@@ -104,16 +112,19 @@ fn test_distiller_smart_splitting_garbage() {
 
 #[test]
 fn test_parser_raw() {
+    let builtins = builtins::generate_symbol_map();
+    let config = config::Config::default();
+    let constants = config.constants.keys().map(|s| s.as_str());
+
     let cases = [
         ("5", r#"["R:5"]"#),
-        ("x = 5 kg", r#"["R:x", "O:Assign", "R:5", "R:kg"]"#),
-        ("3 + (1 + 2)", r#"["R:3", "O:Add", ["R:1", "O:Add", "R:2"]]"#),
+        ("x = 5 kg", r#"["R:x", "O:Fend(Equals)", "R:5", "R:kg"]"#),
+        ("3 + (1 + 2)", r#"["R:3", "O:Fend(Add)", ["R:1", "O:Fend(Add)", "R:2"]]"#),
+        ("sin(PI)", r#"["F:sin", ["C:PI"]]"#),
     ];
 
-    let builtins = builtins::generate_symbol_map();
-
     for (input, expected_json) in cases {
-        let result = parse(input, &builtins, std::iter::empty::<&str>());
+        let result = parse(input, &builtins, constants.clone());
         let reconstructed = serde_json::Value::Array(reconstruct(&result));
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
         assert_eq!(reconstructed, expected_value, "Failed on raw parse input: {:?}", input);
@@ -124,14 +135,14 @@ fn test_parser_raw() {
 fn test_janitor_cases() {
     let cases = [
         ("5", r#"[["R:5"]]"#),
-        ("x = 5 kg", r#"[["R:x", "O:Assign", "R:5", "R:kg"]]"#),
+        ("x = 5 kg", r#"[["R:x", "O:Fend(Equals)", "R:5", "R:kg"]]"#),
         ("(5)", r#"[["R:5"]]"#),
         ("((5))", r#"[["R:5"]]"#),
-        ("3 + (1 + 2)", r#"[["R:3", "O:Add", ["R:1", "O:Add", "R:2"]]]"#),
-        ("x = 1; y = 2", r#"[["R:x", "O:Assign", "R:1"], ["R:y", "O:Assign", "R:2"]]"#),
-        ("x = 1\ny = 2", r#"[["R:x", "O:Assign", "R:1"], ["R:y", "O:Assign", "R:2"]]"#),
-        ("(1; 2)", r#"[["R:1", "O:Sequence", "R:2"]]"#),
-        ("(1, \n 2)", r#"[["R:1", "O:Sequence", "R:2"]]"#),
+        ("3 + (1 + 2)", r#"[["R:3", "O:Fend(Add)", ["R:1", "O:Fend(Add)", "R:2"]]]"#),
+        ("x = 1; y = 2", r#"[["R:x", "O:Fend(Equals)", "R:1"], ["R:y", "O:Fend(Equals)", "R:2"]]"#),
+        ("x = 1\ny = 2", r#"[["R:x", "O:Fend(Equals)", "R:1"], ["R:y", "O:Fend(Equals)", "R:2"]]"#),
+        ("(1; 2)", r#"[["R:1", "O:Comma", "R:2"]]"#),
+        ("(1, \n 2)", r#"[["R:1", "O:Comma", "R:2"]]"#),
         ("(,1,)", r#"[["R:1"]]"#),
         ("()", r#"[[]]"#), // Empty but healthy should survive?
     ];
@@ -152,24 +163,24 @@ fn test_janitor_cases() {
 #[test]
 fn test_unroller_basics() {
     let cases = [
-        ("1 + 2 * 3", r#"[["I:Mul(Q:2, Q:3)", "I:Add(Q:1, I:Mul(Q:2, Q:3))"]]"#),
-        ("5 cm", r#"[["I:Mul(Q:5, U:cm)"]]"#),
-        ("5 PI", r#"[["I:Mul(Q:5, C:PI)"]]"#),
-        ("x = 10; 5x", r#"[["I:Assign(V:x, Q:10)"], ["I:Mul(Q:5, V:x)"]]"#),
-        ("x = 5", r#"[["I:Assign(V:x, Q:5)"]]"#),
-        ("x = ", r#"[["I:Assign(V:x)"]]"#),
+        ("1 + 2 * 3", r#"[["I:Fend(Mul)(V:2, V:3)", "I:Fend(Add)(V:1, I:Fend(Mul)(V:2, V:3))"]]"#),
+        ("5 cm", r#"[["I:Fend(Mul)(V:5, VAR:cm)"]]"#),
+        ("5 PI", r#"[["I:Fend(Mul)(V:5, C:PI)"]]"#),
+        ("x = 10; 5x", r#"[["I:Fend(Equals)(VAR:x, V:10)"], ["I:Fend(Mul)(V:5, VAR:x)"]]"#),
+        ("3(1+2)", r#"[["I:Fend(Add)(V:1, V:2)", "I:Fend(Mul)(V:3, I:Fend(Add)(V:1, V:2))"]]"#),
+        ("x = 5", r#"[["I:Fend(Equals)(VAR:x, V:5)"]]"#),
+        ("x = ", r#"[["I:Fend(Equals)(VAR:x)"]]"#),
         ("sin(PI)", r#"[["I:Call(F:sin, C:PI)"]]"#),
     ];
 
     let builtins = builtins::generate_symbol_map();
     let config = config::Config::default();
     let constants = config.constants.keys().map(|s| s.as_str());
-    let units = distiller::get_default_units();
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
         janitor(&mut workspace);
-        distiller(&mut workspace, &units);
+        distiller(&mut workspace);
         unroller(&mut workspace);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));

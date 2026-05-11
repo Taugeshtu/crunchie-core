@@ -44,16 +44,44 @@ pub struct EngineResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FendOp {
+    Add, Sub, Mul, Div, Mod, Pow,
+    BitwiseAnd, BitwiseOr, BitwiseXor,
+    To, Factorial, Of,
+    ShiftLeft, ShiftRight,
+    Equals, DoubleEquals, NotEquals,
+    Fn, Backslash, Dot, Semicolon,
+    Combination, Permutation,
+    OpenParens, CloseParens,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpCode {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Pow,
-    Assign,
-    Sequence,
-    To,
-    Call,
+    /// Direct mapping to Fend's lexer symbols.
+    Fend(FendOp),
+
+    // --- Missing Comparisons ---
+    Greater,
+    Less,
+    GreaterEqual,
+    LessEqual,
+
+    // --- Compound Assignments ---
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+
+    // --- Structural / Crunchie-specific ---
+    Comma,    // Argument separator
+    Sequence, // Newline or explicit line break
+    Call,     // Internal instruction calling
+}
+
+impl OpCode {
+    pub fn is_sequence(&self) -> bool {
+        matches!(self, OpCode::Sequence | OpCode::Fend(FendOp::Semicolon))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +113,31 @@ impl Workspace {
         self.intern_map.insert(sym.to_string(), id);
         self.symbols.insert(id, Symbol::Raw(sym.to_string()));
         id
+    }
+
+    pub fn get_or_intern_symbol_typed(&mut self, sym: Symbol) -> i32 {
+        // If it's Raw, we can use the intern_map. For other types, we might just mint new ones
+        // or add them to the intern_map if they have a string representation.
+        match &sym {
+            Symbol::Raw(s) | Symbol::Variable(s) | Symbol::Constant(s) | Symbol::Function(s) => {
+                if let Some(&id) = self.intern_map.get(s) {
+                    // Update existing symbol if it was Raw but we now know it's a Variable, etc.
+                    self.symbols.insert(id, sym);
+                    return id;
+                }
+                let id = self.next_id;
+                self.next_id += 1;
+                self.intern_map.insert(s.clone(), id);
+                self.symbols.insert(id, sym);
+                id
+            }
+            _ => {
+                let id = self.next_id;
+                self.next_id += 1;
+                self.symbols.insert(id, sym);
+                id
+            }
+        }
     }
 }
 
@@ -129,7 +182,7 @@ pub struct Entity {
     pub offset: u32, 
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Symbol {
     // --- Stage 1: Seeded by the Parser ---
     /// Unclassified alphanumeric monoliths (e.g., "5kg", "x")
@@ -139,17 +192,15 @@ pub enum Symbol {
     Operator(OpCode),
     Function(String),
     Constant(String),
-    
+
     // --- Stage 2: Minted by the Distiller (Number Muncher) ---
-    /// The f64 result of a successfully parsed number
-    Quantity(f64),
+    /// A terminal value owned by Fend (holds units, precision, etc.)
+    Value(fend_core::value::Value),
     /// A named variable binding
     Variable(String),
-    /// A standalone physical unit recognized by Numbat
-    PhysUnit(String),
     /// Injected when typization fatally fails
     Poison,
-    
+
     // --- Stage 3: Minted by the Vectorizer (Aspiration) ---
     /// Evaluated from ContainerRef during the vectorization pass
     VectorRef(i32),
@@ -158,4 +209,31 @@ pub enum Symbol {
         op: OpCode,
         args: Vec<i32>,
     },
+}
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Raw(a), Self::Raw(b)) => a == b,
+            (Self::ContainerRef(a), Self::ContainerRef(b)) => a == b,
+            (Self::Operator(a), Self::Operator(b)) => a == b,
+            (Self::Function(a), Self::Function(b)) => a == b,
+            (Self::Constant(a), Self::Constant(b)) => a == b,
+            (Self::Variable(a), Self::Variable(b)) => a == b,
+            (Self::Poison, Self::Poison) => true,
+            (Self::VectorRef(a), Self::VectorRef(b)) => a == b,
+            (Self::Instruction { op: op1, args: args1 }, Self::Instruction { op: op2, args: args2 }) => {
+                op1 == op2 && args1 == args2
+            }
+            (Self::Value(a), Self::Value(b)) => {
+                let mut ctx = fend_core::Context::new();
+                let int = fend_core::interrupt::Never;
+                match a.compare(b, &mut ctx, &int) {
+                    Ok(Some(std::cmp::Ordering::Equal)) => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
 }

@@ -76,16 +76,10 @@ pub fn sweep<'a>(
         let sym = if *v <= builtins::FUNCTIONS_START_ID {
             Symbol::Function(k.clone())
         } else if *v <= -1 {
-            match k.as_str() {
-                "+" => Symbol::Operator(OpCode::Add),
-                "-" => Symbol::Operator(OpCode::Sub),
-                "*" => Symbol::Operator(OpCode::Mul),
-                "/" => Symbol::Operator(OpCode::Div),
-                "^" => Symbol::Operator(OpCode::Pow),
-                "=" | "+=" | "-=" | ">=" | "<=" | "==" | "!=" | ">>" | "<<" => Symbol::Operator(OpCode::Assign), // using Assign for now, may need more OpCodes later
-                "\n" | ";" | "," => Symbol::Operator(OpCode::Sequence),
-                "to" => Symbol::Operator(OpCode::To),
-                _ => Symbol::Raw(k.clone()),
+            if let Some(op) = builtins::get_operator(k) {
+                Symbol::Operator(op)
+            } else {
+                Symbol::Raw(k.clone())
             }
         } else {
             Symbol::Raw(k.clone())

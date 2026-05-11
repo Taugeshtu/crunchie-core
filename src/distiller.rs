@@ -1,222 +1,127 @@
-use crate::model::{Symbol, Workspace, Entity, OpCode, Diagnostic, DiagnosticCode, Span, Position};
+use crate::model::{Symbol, Workspace, Entity, Diagnostic, DiagnosticCode, Span, Position};
 use std::collections::{HashSet, HashMap};
+use fend_core::{lexer, Context, interrupt::Never, value::Value as FendValue};
 
 /// The Distiller acts as the semantic bridge.
-/// It converts Symbol::Raw strings into typed symbols like Quantity, PhysUnit, or Variable.
-pub fn distill(workspace: &mut Workspace, known_units: &HashSet<String>) {
-    let mut expansions: HashMap<i32, Vec<Symbol>> = HashMap::new();
+/// It converts Symbol::Raw strings into typed symbols using Fend's lexer.
+pub fn distill(workspace: &mut Workspace) {
+    let mut ctx = Context::new();
+    let int = Never;
 
-    // Pass 1: Identify "Pure" identifiers (those that don't start with a digit)
-    // and type them so they are "known" for the muncher in Pass 2.
-    let mut typed_pure = Vec::new();
-    for (&id, sym) in &workspace.symbols {
-        if let Symbol::Raw(s) = sym {
-            if !s.is_empty() && !s.chars().next().unwrap().is_ascii_digit() {
-                // It's a potential variable/unit/function.
-                // We use munch here too, but it will just return a single symbol.
-                let munch_res = munch(s, known_units, &HashSet::new());
-                if munch_res.len() == 1 {
-                    typed_pure.push((id, munch_res[0].clone()));
+    // 1. Scout for all identifiers (Variables, Constants, Functions)
+    let known_identifiers = collect_known_identifiers(workspace);
+
+    // 2. Identify all Raw symbols and at least one representative offset for each.
+    // This avoids borrowing conflicts and ensures we have provenance for diagnostics.
+    let mut raw_work = HashMap::new(); // Map<ID, (offset, text)>
+    for container in workspace.containers.values() {
+        for entity in &container.contents {
+            if let Some(Symbol::Raw(s)) = workspace.symbols.get(&entity.id) {
+                if !raw_work.contains_key(&entity.id) {
+                    raw_work.insert(entity.id, (entity.offset, s.clone()));
                 }
             }
         }
     }
-    for (id, sym) in typed_pure {
-        workspace.symbols.insert(id, sym);
-    }
 
-    // Identifiers already known (Variables, Constants, Functions)
-    let mut known_identifiers = HashSet::new();
+    for (id, (offset, sym_text)) in raw_work {
+        let results = fend_munch(&sym_text, &known_identifiers, &mut ctx, &int);
+        
+        if results.is_empty() || results.iter().any(|s| matches!(s, Symbol::Poison)) {
+            workspace.symbols.insert(id, Symbol::Poison);
+            
+            workspace.diagnostics.push(Diagnostic {
+                code: DiagnosticCode::MalformedSymbol,
+                span: Span {
+                    start: Position { offset, line: 0, col: 0 },
+                    end: Position { offset, line: 0, col: 0 },
+                },
+            });
+            continue;
+        }
+
+        if results.len() == 1 {
+            // 1:1 Replacement
+            workspace.symbols.insert(id, results[0].clone());
+        } else {
+            // 1:N Expansion (ContainerRef trick)
+            let mut entities = Vec::new();
+            for part in results {
+                let part_id = workspace.get_or_intern_symbol_typed(part);
+                entities.push(Entity { id: part_id, offset: u32::MAX }); // Inherit parent offset
+            }
+            
+            let container_id = workspace.next_id;
+            workspace.next_id += 1;
+            workspace.containers.insert(container_id, crate::model::Container {
+                contents: entities,
+                corrupted: false,
+                start_pos: Position::default(),
+            });
+            
+            workspace.symbols.insert(id, Symbol::ContainerRef(container_id));
+        }
+    }
+}
+
+fn collect_known_identifiers(workspace: &Workspace) -> HashSet<String> {
+    let mut idents = HashSet::new();
     for sym in workspace.symbols.values() {
         match sym {
-            Symbol::Variable(v) => { known_identifiers.insert(v.clone()); }
-            Symbol::Constant(c) => { known_identifiers.insert(c.clone()); }
-            Symbol::Function(f) => { known_identifiers.insert(f.clone()); }
+            Symbol::Variable(s) | Symbol::Constant(s) | Symbol::Function(s) => {
+                idents.insert(s.clone());
+            }
             _ => {}
         }
     }
-
-    // Pass 2: Munch the remaining Raw symbols (likely numeric monoliths)
-    for (&id, sym) in &workspace.symbols {
-        if let Symbol::Raw(s) = sym {
-            expansions.insert(id, munch(s, known_units, &known_identifiers));
-        }
-    }
-
-    // 2. Apply transformations to containers
-    for container in workspace.containers.values_mut() {
-        let mut new_contents = Vec::new();
-        let mut changed = false;
-
-        for entity in &container.contents {
-            if let Some(symbols) = expansions.get(&entity.id) {
-                let has_poison = symbols.iter().any(|s| matches!(s, Symbol::Poison));
-                
-                if has_poison {
-                    workspace.symbols.insert(entity.id, Symbol::Poison);
-                    workspace.diagnostics.push(Diagnostic {
-                        code: DiagnosticCode::MalformedSymbol,
-                        span: Span {
-                            start: Position { offset: entity.offset, line: 0, col: 0 }, // TODO: accurate line/col
-                            end: Position { offset: entity.offset, line: 0, col: 0 }, // TODO: accurate end
-                        },
-                    });
-                    new_contents.push(*entity);
-                } else if symbols.len() == 1 {
-                    // 1:1 Replacement (in-place in symbols map)
-                    workspace.symbols.insert(entity.id, symbols[0].clone());
-                    new_contents.push(*entity);
-                } else {
-                    // 1:N Expansion
-                    changed = true;
-                    for sym in symbols {
-                        let new_id = workspace.next_id;
-                        workspace.next_id += 1;
-                        workspace.symbols.insert(new_id, sym.clone());
-                        new_contents.push(Entity { id: new_id, offset: entity.offset });
-                    }
-                }
-            } else {
-                new_contents.push(*entity);
-            }
-        }
-
-        if changed {
-            container.contents = new_contents;
-        }
-    }
+    idents
 }
 
-pub fn munch(s: &str, known_units: &HashSet<String>, known_identifiers: &HashSet<String>) -> Vec<Symbol> {
+fn fend_munch(
+    s: &str, 
+    known_identifiers: &HashSet<String>,
+    ctx: &mut Context,
+    int: &Never
+) -> Vec<Symbol> {
     if s.is_empty() { return vec![]; }
 
-    // Phase 1: Lexical Split
-    let (num_str, suffix_str) = split_lexical(s);
+    let lex = lexer::lex(s, ctx, int);
+    let mut symbols = Vec::new();
+    let attrs = fend_core::eval::Attrs::default();
 
-    if num_str.is_empty() {
-        // No number. Check if it's a known unit.
-        if known_units.contains(s) {
-            return vec![Symbol::PhysUnit(s.to_string())];
-        }
-        // Fallback to variable.
-        return vec![Symbol::Variable(s.to_string())];
-    }
-
-    // Phase 2: Numeric Evaluation
-    let clean_num = num_str.replace('_', "");
-    let val = if clean_num.starts_with("0x") {
-        u64::from_str_radix(&clean_num[2..], 16).map(|v| v as f64).map_err(|_| ())
-    } else if clean_num.starts_with("0b") {
-        u64::from_str_radix(&clean_num[2..], 2).map(|v| v as f64).map_err(|_| ())
-    } else {
-        clean_num.parse::<f64>().map_err(|_| ())
-    };
-
-    let val = match val {
-        Ok(v) => v,
-        Err(_) => return vec![Symbol::Poison], // Malformed Number -> Poison
-    };
-
-    if suffix_str.is_empty() {
-        return vec![Symbol::Quantity(val)];
-    }
-
-    // Phase 3: Suffix Resolution
-    // 1. SI multipliers
-    if suffix_str == "k" || suffix_str == "K" {
-        return vec![Symbol::Quantity(val * 1000.0)];
-    }
-    if suffix_str == "M" {
-        return vec![Symbol::Quantity(val * 1_000_000.0)];
-    }
-
-    // 2. Pure Physical Unit
-    if known_units.contains(suffix_str) {
-        return vec![Symbol::Quantity(val), Symbol::PhysUnit(suffix_str.to_string())];
-    }
-
-    // 3. Known Identifier (Variable/Constant)
-    if known_identifiers.contains(suffix_str) {
-        return vec![Symbol::Quantity(val), Symbol::Variable(suffix_str.to_string())];
-    }
-
-    // 4. Power Suffix Expansion (cm3)
-    if suffix_str.len() > 1 {
-        let last_char = suffix_str.chars().last().unwrap();
-        if last_char.is_ascii_digit() {
-            if let Some(power) = last_char.to_digit(10) {
-                if (2..=5).contains(&power) {
-                    let prefix = &suffix_str[..suffix_str.len() - 1];
-                    if known_units.contains(prefix) {
-                        return vec![
-                            Symbol::Quantity(val),
-                            Symbol::PhysUnit(prefix.to_string()),
-                            Symbol::Operator(OpCode::Pow),
-                            Symbol::Quantity(power as f64),
-                        ];
+    for token_res in lex {
+        match token_res {
+            Ok(token) => {
+                match token {
+                    lexer::Token::Num(n) => {
+                        // Prevent multiple numbers in a single monolith (e.g. "5 5")
+                        if symbols.iter().any(|s| matches!(s, Symbol::Value(_))) {
+                            return vec![Symbol::Poison];
+                        }
+                        symbols.push(Symbol::Value(FendValue::Num(Box::new(n))));
                     }
+                    lexer::Token::Ident(ident) => {
+                        let name = ident.as_str();
+                        // If this is a split (monolith), it must be a known unit or identifier
+                        if s.len() > name.len() {
+                            let is_unit = fend_core::units::query_unit_static(name, attrs, ctx, int).is_ok();
+                            if !is_unit && !known_identifiers.contains(name) {
+                                return vec![Symbol::Poison];
+                            }
+                        }
+                        symbols.push(Symbol::Variable(name.to_string()));
+                    }
+                    // Any structural Symbol, StringLiteral, or Date found INSIDE a Raw monolith 
+                    // is an error because the Parser should have split it out.
+                    _ => return vec![Symbol::Poison],
                 }
             }
+            Err(_) => return vec![Symbol::Poison],
         }
     }
 
-    // 5. Garbage fallback -> Poison!
-    vec![Symbol::Poison]
-}
-
-fn split_lexical(s: &str) -> (&str, &str) {
-    if s.starts_with("0x") {
-        let end = s[2..].find(|c: char| !c.is_ascii_hexdigit() && c != '_')
-            .map(|i| i + 2)
-            .unwrap_or(s.len());
-        return (&s[..end], &s[end..]);
+    if symbols.is_empty() {
+        return vec![Symbol::Poison];
     }
-    if s.starts_with("0b") {
-        let end = s[2..].find(|c: char| c != '0' && c != '1' && c != '_')
-            .map(|i| i + 2)
-            .unwrap_or(s.len());
-        return (&s[..end], &s[end..]);
-    }
-
-    // Decimal / Scientific
-    let mut end = 0;
-    let chars: Vec<char> = s.chars().collect();
-    let mut saw_e = false;
-
-    while end < chars.len() {
-        let c = chars[end];
-        if c.is_ascii_digit() || c == '.' || c == '_' {
-            end += 1;
-        } else if (c == 'e' || c == 'E') && !saw_e {
-            // Check if next is digit or +/-
-            if end + 1 < chars.len() {
-                let next = chars[end + 1];
-                if next.is_ascii_digit() || next == '+' || next == '-' {
-                    saw_e = true;
-                    end += 2; // skip e and sign/digit
-                    
-                    // Consume any following digits
-                    while end < chars.len() && (chars[end].is_ascii_digit() || chars[end] == '_') {
-                        end += 1;
-                    }
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-    
-    (&s[..end], &s[end..])
-}
-
-pub fn get_default_units() -> HashSet<String> {
-    let mut units = HashSet::new();
-    for u in &["m", "cm", "mm", "km", "kg", "g", "mg", "s", "min", "h", "mph", "kph", "lbs", "oz", "degC", "degF", "K", "in", "ft", "yd", "mi"] {
-        units.insert(u.to_string());
-    }
-    units
+    symbols
 }

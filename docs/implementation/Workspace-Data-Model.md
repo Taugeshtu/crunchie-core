@@ -57,31 +57,28 @@ pub enum Symbol {
     Function(String),
     Constant(String),
     
-    // --- Stage 2: Minted by the Distiller (Number Muncher) ---
-    /// The f64 result of a successfully parsed number
-    Quantity(f64),
+    // --- Stage 2: Minted by the Distiller (Fend Muncher) ---
+    /// A terminal value owned by Fend (holds units, precision, etc.)
+    Value(fend_core::value::Value),
     /// A named variable binding
     Variable(String),
-    /// A standalone physical unit recognized by Numbat
-    PhysUnit(String),
     /// Injected when typization fatally fails
     Poison,
     
-    // --- Stage 3: Minted by the Vectorizer (Aspiration) ---
-    /// Evaluated from ContainerRef during the vectorization pass
-    VectorRef(i32),    
+    // --- Stage 3: Minted by the Unroller ---
+    /// A linear instruction for the Executioner
+    Instruction { op: OpCode, args: Vec<i32> },
 }
 ```
 
 ### 3. Pipeline Flow Example: `5kg`
 
 1.  **Parser**: Sweeps `5kg` at offset `10`. It mints `Symbol::Raw("5kg")` at ID `100`. It pushes `Entity(id: 100, offset: 10)` into the current `Container`.
-2.  **Distiller**: Iterates the `Container`. Sees ID `100` is `Raw("5kg")`. It runs the Muncher.
-    *   Mints `Symbol::Quantity(5.0)` at ID `101`.
-    *   Mints `Symbol::PhysUnit("kg")` at ID `102`.
-    *   *Mutates* the container's contents: replaces `Entity(id: 100)` with `Entity(id: 101, offset: 10)` and `Entity(id: 102, offset: 10)`.
-    *   *Notice that the exact original offset is preserved for both new units!*
-
+2.  **Distiller**: Iterates the `Container`. Sees ID `100` is `Raw("5kg")`. It runs the `fend_munch`.
+    *   Mints `Symbol::Value(5kg)` at ID `101`.
+    *   *Mutates* the container's contents: replaces `Entity(id: 100)` with `Entity(id: 101, offset: 10)`.
+    *   *Note: Because Fend values are unit-aware, a monolith like "5kg" can remain a single Entity if Fend consumes it as a single terminal.*
+3.  **Unroller**: Processes the container. If it sees adjacent values or variables (e.g. `5 x`), it injects implicit multiplication instructions into the Tape.
 ### 4. Why This Architecture Wins
 *   **No Recursive Tree Walking**: The Distiller doesn't need to recursively walk trees. It just iterates `Workspace.containers.values_mut()`, looks at the flat `contents` lists, checks the global symbol map, and swaps out `Entity` pointers.
 *   **Zero Loss of Provenance**: When symbols split, we just copy the `offset` from the old `Entity` into the new `Entity`s.

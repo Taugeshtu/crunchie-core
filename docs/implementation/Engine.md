@@ -17,4 +17,4 @@ The Distiller is the "Air-Gap" between the world of raw IDs and the world of Phy
 The Unroller flattens the nested hierarchy into a linear "Tape" of instructions. It respects mathematical precedence and allocates virtual registers.
 
 ## [[Engine-Executioner]]
-The Executioner is the final pass that talks to the Numbat physics engine. It performs the solve loop, handles poisoning, and generates fill results.
+The Executioner is the final pass that talks to the `fend-core` arithmetic engine. It performs the solve loop, handles poisoning, and generates fill results. Unlike Numbat, Fend maintains its own internal unit and variable state via a `Context`.

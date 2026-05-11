@@ -58,10 +58,19 @@ fn maybe_promote_line(workspace: &mut Workspace, contents: Vec<Entity>) -> i32 {
         let id = current_contents[0].id;
         if let Some(Symbol::ContainerRef(cid)) = workspace.symbols.get(&id) {
             if let Some(inner) = workspace.containers.get(cid) {
-                corrupted |= inner.corrupted;
-                current_contents = inner.contents.clone();
-            } else { break; }
-        } else { break; }
+                // Only collapse if the inner container also only has one child
+                // AND that child is ANOTHER container. This collapses (((5))) -> (5)
+                if inner.contents.len() == 1 {
+                    let child_id = inner.contents[0].id;
+                    if matches!(workspace.symbols.get(&child_id), Some(Symbol::ContainerRef(_))) {
+                        corrupted |= inner.corrupted;
+                        current_contents = inner.contents.clone();
+                        continue;
+                    }
+                }
+            }
+        }
+        break;
     }
 
     let id = workspace.next_id;
@@ -95,16 +104,20 @@ fn process_sequence(
 
             let cleaned_inner = process_sequence(workspace, inner_contents, comma_id, newline_id, semicolon_id);
             
-            // Inert Container Flattening: (5) -> 5
+            // Redundant Container Collapsing: ( (x) ) -> (x)
             if cleaned_inner.len() == 1 {
-                rebuilt.push(cleaned_inner[0]);
-            } else {
-                // Update container in place
-                if let Some(c) = workspace.containers.get_mut(&cid) {
-                    c.contents = cleaned_inner;
+                let child_id = cleaned_inner[0].id;
+                if matches!(workspace.symbols.get(&child_id), Some(Symbol::ContainerRef(_))) {
+                    rebuilt.push(cleaned_inner[0]);
+                    continue;
                 }
-                rebuilt.push(entity);
             }
+            
+            // Otherwise, keep the container but update its cleaned contents
+            if let Some(c) = workspace.containers.get_mut(&cid) {
+                c.contents = cleaned_inner;
+            }
+            rebuilt.push(entity);
         } else if entity.id == newline_id || entity.id == semicolon_id {
             // Coerce to comma
             rebuilt.push(Entity { id: comma_id, offset: entity.offset });
