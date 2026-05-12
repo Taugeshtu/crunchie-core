@@ -1,7 +1,12 @@
 [package]
 name = "crunchie-core"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
+authors = ["Tykhon Gusiev"]
+license = "MIT"
+description = "A stateful, robust DSL engine for buffer-based math, powered by fend-core."
+readme = "README.md"
+repository = "https://github.com/Taugeshtu/crunchie-core"
 
 [dependencies]
 fend-core = { path = "dependencies/fend-core" }
