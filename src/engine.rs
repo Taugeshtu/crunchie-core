@@ -1,4 +1,4 @@
-use crate::model::{Workspace, Atom, OpCode, FendOp, EngineResult, Diagnostic, DiagnosticCode, TextEdit};
+use crate::model::{Workspace, Atom, OpCode, FendOp, EngineResult, Diagnostic, DiagnosticCode, TextEdit, Position};
 use crate::config::Config;
 use std::collections::{HashMap, HashSet};
 use fend_core::{Context, interrupt::Never, ast::{Expr, Bop, evaluate}};
@@ -12,6 +12,7 @@ pub struct Executioner<'a> {
     pub text: &'a str,
     pub ctx: Context,
     pub state_map: HashMap<i32, Value>,
+    pub pos_map: HashMap<i32, Position>,
     pub poison_set: HashSet<i32>,
     pub diagnostics: Vec<Diagnostic>,
     pub edits: Vec<TextEdit>,
@@ -25,6 +26,7 @@ impl<'a> Executioner<'a> {
             text,
             ctx: Context::new(),
             state_map: HashMap::new(),
+            pos_map: HashMap::new(),
             poison_set: HashSet::new(),
             diagnostics: Vec::new(),
             edits: Vec::new(),
@@ -50,6 +52,11 @@ impl<'a> Executioner<'a> {
                 } else {
                     continue;
                 };
+
+                // 0. Position Mapping
+                for child in &container.contents {
+                    self.pos_map.insert(child.id, child.position);
+                }
 
                 // 1. Line Poison Check
                 if container.corrupted {
@@ -99,7 +106,7 @@ impl<'a> Executioner<'a> {
                             // If this is the last instruction, we can resolve intents (Assignments, Queries, Assertions)
                             if is_last {
                                 if let OpCode::Fend(FendOp::Equals) = op {
-                                    self.handle_intent(&args, child.id, child.offset);
+                                    self.handle_intent(&args, child.id, child.position);
                                     continue;
                                 }
                             }
@@ -114,13 +121,10 @@ impl<'a> Executioner<'a> {
                                     }
                                     Err(_) => {
                                         self.poison_set.insert(child.id);
-                                        let pos = self.workspace.get_position(child.offset, self.text);
+                                        let span = self.get_instruction_span(&args, child.position);
                                         self.diagnostics.push(Diagnostic {
                                             code: DiagnosticCode::MalformedExpression, // Or a new EvaluationError
-                                            span: crate::model::Span {
-                                                start: pos,
-                                                end: pos,
-                                            },
+                                            span,
                                         });
                                     }
                                 }
@@ -139,7 +143,24 @@ impl<'a> Executioner<'a> {
         result
     }
 
-    fn handle_intent(&mut self, args: &[i32], id: i32, offset: u32) {
+    fn get_instruction_span(&self, args: &[i32], op_pos: Position) -> crate::model::Span {
+        let mut min_pos = op_pos;
+        let mut max_pos = op_pos;
+        
+        for &arg_id in args {
+            if let Some(p) = self.pos_map.get(&arg_id) {
+                if p.offset < min_pos.offset { min_pos = *p; }
+                if p.offset > max_pos.offset { max_pos = *p; }
+            }
+        }
+        
+        crate::model::Span {
+            start: min_pos,
+            end: max_pos,
+        }
+    }
+
+    fn handle_intent(&mut self, args: &[i32], id: i32, position: Position) {
         // args can be length 1 (Query) or length 2 (Assignment or Assertion)
         if args.len() == 1 {
             // Query
@@ -153,7 +174,7 @@ impl<'a> Executioner<'a> {
                     spans.clear();
                     if v.format(0, &mut spans, attrs, false, &mut self.ctx, &int).is_ok() {
                         let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
-                        let insert_offset = offset + 1; // Insert after the '='
+                        let insert_offset = position.offset + 1; // Insert after the '='
                         let pos = self.workspace.get_position(insert_offset, self.text);
                         self.edits.push(TextEdit {
                             span: crate::model::Span {
@@ -202,13 +223,10 @@ impl<'a> Executioner<'a> {
                         Ok(Value::Bool(true)) => { /* pass */ },
                         _ => {
                             self.poison_set.insert(id);
-                            let pos = self.workspace.get_position(offset, self.text);
+                            let span = self.get_instruction_span(args, position);
                             self.diagnostics.push(Diagnostic {
                                 code: DiagnosticCode::MalformedExpression, // Or AssertionFailed
-                                span: crate::model::Span {
-                                    start: pos,
-                                    end: pos,
-                                },
+                                span,
                             });
                         }
                     }

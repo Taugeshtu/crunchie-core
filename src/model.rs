@@ -219,7 +219,7 @@ pub struct Entity {
     /// The pointer to `Workspace.atoms`.
     pub id: i32,
     /// Provenance: Where did this entity originate in the text buffer?
-    pub offset: u32, 
+    pub position: Position, 
 }
 
 #[derive(Debug, Clone)]

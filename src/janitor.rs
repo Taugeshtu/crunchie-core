@@ -25,8 +25,9 @@ pub fn scrub(workspace: &mut Workspace) {
             if !current_line_entities.is_empty() {
                 let cleaned = process_sequence(workspace, current_line_entities, comma_id, newline_id, semicolon_id);
                 if !cleaned.is_empty() {
+                    let position = cleaned[0].position;
                     let line_id = maybe_promote_line(workspace, cleaned);
-                    new_root_contents.push(Entity { id: line_id, offset: 0 }); // TODO: better offset
+                    new_root_contents.push(Entity { id: line_id, position });
                 }
                 current_line_entities = Vec::new();
             }
@@ -38,8 +39,9 @@ pub fn scrub(workspace: &mut Workspace) {
     if !current_line_entities.is_empty() {
         let cleaned = process_sequence(workspace, current_line_entities, comma_id, newline_id, semicolon_id);
         if !cleaned.is_empty() {
+            let position = cleaned[0].position;
             let line_id = maybe_promote_line(workspace, cleaned);
-            new_root_contents.push(Entity { id: line_id, offset: 0 });
+            new_root_contents.push(Entity { id: line_id, position });
         }
     }
 
@@ -53,6 +55,7 @@ pub fn scrub(workspace: &mut Workspace) {
 fn maybe_promote_line(workspace: &mut Workspace, contents: Vec<Entity>) -> i32 {
     let mut current_contents = contents;
     let mut corrupted = false;
+    let start_pos = current_contents.first().map(|e| e.position).unwrap_or_default();
 
     // Aggressive De-stacking: If we only contain a single other container, 
     // we take its contents and repeat.
@@ -73,7 +76,7 @@ fn maybe_promote_line(workspace: &mut Workspace, contents: Vec<Entity>) -> i32 {
     workspace.containers.insert(id, Container {
         contents: current_contents,
         corrupted,
-        start_pos: Position { offset: 0, line: 0, col: 0 },
+        start_pos,
     });
     workspace.atoms.insert(id, Atom::Container(id));
     id
@@ -126,7 +129,7 @@ fn process_sequence(
             rebuilt.push(entity);
         } else if entity.id == newline_id || entity.id == semicolon_id {
             // Coerce to comma
-            rebuilt.push(Entity { id: comma_id, offset: entity.offset });
+            rebuilt.push(Entity { id: comma_id, position: entity.position });
         } else {
             rebuilt.push(entity);
         }
@@ -146,8 +149,12 @@ fn process_sequence(
                 workspace.diagnostics.push(Diagnostic {
                     code: DiagnosticCode::StraySequence,
                     span: Span { 
-                        start: Position { offset: entity.offset, line: 0, col: 0 },
-                        end: Position { offset: entity.offset + 1, line: 0, col: 0 } 
+                        start: entity.position,
+                        end: Position { 
+                            offset: entity.position.offset + 1, 
+                            line: entity.position.line, 
+                            col: entity.position.col + 1 
+                        } 
                     },
                 });
             }
@@ -161,13 +168,17 @@ fn process_sequence(
     // Trim trailing
     if let Some(last) = final_entities.last() {
         if last.id == comma_id {
-            let offset = last.offset;
+            let position = last.position;
             final_entities.pop();
             workspace.diagnostics.push(Diagnostic {
                 code: DiagnosticCode::StraySequence,
                 span: Span { 
-                    start: Position { offset, line: 0, col: 0 }, 
-                    end: Position { offset: offset + 1, line: 0, col: 0 } 
+                    start: position, 
+                    end: Position { 
+                        offset: position.offset + 1, 
+                        line: position.line, 
+                        col: position.col + 1 
+                    } 
                 },
             });
         }

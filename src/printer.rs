@@ -1,4 +1,4 @@
-use crate::model::{Workspace, Atom, Entity};
+use crate::model::{Workspace, Atom, Entity, Position};
 use std::collections::HashMap;
 
 /// Prints the workspace topology in a human-readable format.
@@ -14,7 +14,7 @@ pub fn print_workspace(workspace: &Workspace) -> String {
     if !workspace.diagnostics.is_empty() {
         out.push_str("  Diagnostics:\n");
         for diag in &workspace.diagnostics {
-            out.push_str(&format!("    - {:?} at offset {:?}\n", diag.code, diag.span.start.offset));
+            out.push_str(&format!("    - {:?} at {:?}:{:?}\n", diag.code, diag.span.start.line + 1, diag.span.start.col + 1));
         }
     }
 
@@ -57,7 +57,7 @@ fn print_entity(
         Some(Atom::Instruction { op, args }) => {
             out.push_str(&format!("{}[Instr] {:?}\n", spaces, op));
             for arg_id in args {
-                print_entity(workspace, &Entity { id: *arg_id, offset: 0 }, reverse_intern, indent + 2, out);
+                print_entity(workspace, &Entity { id: *arg_id, position: Position::default() }, reverse_intern, indent + 2, out);
             }
         }
         Some(Atom::Value(v)) => {

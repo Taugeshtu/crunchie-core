@@ -13,14 +13,14 @@ pub fn distill(workspace: &mut Workspace) {
 
     // 2. Identify all Raw atoms.
     let mut raw_ids: Vec<i32> = Vec::new();
-    let mut id_to_offset = HashMap::new();
+    let mut id_to_pos = HashMap::new();
 
     for container in workspace.containers.values() {
         for entity in &container.contents {
             if let Some(Atom::Raw(_)) = workspace.atoms.get(&entity.id) {
-                if !id_to_offset.contains_key(&entity.id) {
+                if !id_to_pos.contains_key(&entity.id) {
                     raw_ids.push(entity.id);
-                    id_to_offset.insert(entity.id, entity.offset);
+                    id_to_pos.insert(entity.id, entity.position);
                 }
             }
         }
@@ -39,8 +39,8 @@ pub fn distill(workspace: &mut Workspace) {
         };
         
         let results = fend_munch(&text, &current_known, &mut ctx, &int);
-        if results.len() == 1 && !matches!(results[0], Atom::Poison) {
-            let atom = results[0].clone();
+        if results.len() == 1 && !matches!(results[0].0, Atom::Poison) {
+            let atom = results[0].0.clone();
             if let Atom::Variable(s) = &atom {
                 current_known.insert(s.clone());
             }
@@ -53,29 +53,35 @@ pub fn distill(workspace: &mut Workspace) {
     // Pass 2: Process remaining atoms (expansions and poison).
     for (id, sym_text) in remaining_ids {
         let results = fend_munch(&sym_text, &current_known, &mut ctx, &int);
-        let offset = id_to_offset.get(&id).cloned().unwrap_or(0);
+        let parent_pos = id_to_pos.get(&id).cloned().unwrap_or_default();
         
-        if results.is_empty() || results.iter().any(|s| matches!(s, Atom::Poison)) {
+        if results.is_empty() || results.iter().any(|(s, _)| matches!(s, Atom::Poison)) {
             workspace.atoms.insert(id, Atom::Poison);
             
             workspace.diagnostics.push(Diagnostic {
                 code: DiagnosticCode::MalformedSymbol,
                 span: Span {
-                    start: Position { offset, line: 0, col: 0 },
-                    end: Position { offset, line: 0, col: 0 },
+                    start: parent_pos,
+                    end: parent_pos,
                 },
             });
             continue;
         }
 
         if results.len() == 1 {
-            workspace.atoms.insert(id, results[0].clone());
+            workspace.atoms.insert(id, results[0].0.clone());
         } else {
             // 1:N Expansion (Container trick)
             let mut entities = Vec::new();
-            for part in results {
+            for (part, local_offset) in results {
                 let part_id = workspace.get_or_intern_atom_typed(part);
-                entities.push(Entity { id: part_id, offset: u32::MAX }); // Inherit parent offset
+                let local_offset = local_offset as u32;
+                let position = Position {
+                    offset: parent_pos.offset + local_offset,
+                    line: parent_pos.line,
+                    col: parent_pos.col + local_offset,
+                };
+                entities.push(Entity { id: part_id, position });
             }
             
             let container_id = workspace.next_id;
@@ -83,7 +89,7 @@ pub fn distill(workspace: &mut Workspace) {
             workspace.containers.insert(container_id, crate::model::Container {
                 contents: entities,
                 corrupted: false,
-                start_pos: Position::default(),
+                start_pos: parent_pos,
             });
             
             workspace.atoms.insert(id, Atom::Container(container_id));
@@ -109,7 +115,7 @@ fn fend_munch(
     known_identifiers: &HashSet<String>,
     ctx: &mut Context,
     int: &Never
-) -> Vec<Atom> {
+) -> Vec<(Atom, usize)> {
     if s.is_empty() { return vec![]; }
 
     let lex = lexer::lex(s, ctx, int);
@@ -118,14 +124,14 @@ fn fend_munch(
 
     for token_res in lex {
         match token_res {
-            Ok(token) => {
+            Ok((token, offset)) => {
                 match token {
                     lexer::Token::Num(n) => {
                         // Prevent multiple numbers in a single monolith (e.g. "5 5")
-                        if atoms.iter().any(|s| matches!(s, Atom::Value(_))) {
-                            return vec![Atom::Poison];
+                        if atoms.iter().any(|(s, _)| matches!(s, Atom::Value(_))) {
+                            return vec![(Atom::Poison, offset)];
                         }
-                        atoms.push(Atom::Value(FendValue::Num(Box::new(n))));
+                        atoms.push((Atom::Value(FendValue::Num(Box::new(n))), offset));
                     }
                     lexer::Token::Ident(ident) => {
                         let name = ident.as_str();
@@ -133,23 +139,22 @@ fn fend_munch(
                         if s.len() > name.len() {
                             let is_unit = fend_core::units::query_unit_static(name, attrs, ctx, int).is_ok();
                             if !is_unit && !known_identifiers.contains(name) {
-                                return vec![Atom::Poison];
+                                return vec![(Atom::Poison, offset)];
                             }
                         }
-                        atoms.push(Atom::Variable(name.to_string()));
+                        atoms.push((Atom::Variable(name.to_string()), offset));
                     }
                     // Any structural Atom, StringLiteral, or Date found INSIDE a Raw monolith 
                     // is an error because the Parser should have split it out.
-                    _ => return vec![Atom::Poison],
+                    _ => return vec![(Atom::Poison, offset)],
                 }
             }
-            Err(_) => return vec![Atom::Poison],
+            Err(_) => return vec![(Atom::Poison, 0)],
         }
     }
 
     if atoms.is_empty() {
-        return vec![Atom::Poison];
+        return vec![(Atom::Poison, 0)];
     }
     atoms
 }
-

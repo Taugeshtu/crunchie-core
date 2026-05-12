@@ -772,6 +772,7 @@ fn parse_quote_unit(input: &str) -> (Token, &str) {
 
 pub struct Lexer<'a, 'b, I: Interrupt> {
 	input: &'a str,
+	initial_len: usize,
 	// normally 0; 1 after backslash; 2 after ident after backslash
 	after_backslash_state: u8,
 	after_number_or_to: bool,
@@ -831,15 +832,16 @@ fn parse_date(input: &str) -> FResult<(Date, &str)> {
 }
 
 impl<I: Interrupt> Lexer<'_, '_, I> {
-	fn next_token(&mut self) -> FResult<Option<Token>> {
+	fn next_token(&mut self) -> FResult<Option<(Token, usize)>> {
 		skip_whitespace_and_comments(&mut self.input);
+		let offset = self.initial_len - self.input.len();
 		let (ch, following) = {
 			let mut chars = self.input.chars();
 			let ch = chars.next();
 			let following = chars.next();
 			(ch, following)
 		};
-		Ok(Some(match ch {
+		Ok(match ch {
 			Some(ch) => {
 				if ch.is_ascii_digit()
 					|| (ch == self.decimal_separator.decimal_separator()
@@ -849,23 +851,23 @@ impl<I: Interrupt> Lexer<'_, '_, I> {
 					let (num, remaining) =
 						parse_number(self.input, self.decimal_separator, self.int)?;
 					self.input = remaining;
-					Token::Num(num)
+					Some((Token::Num(num), offset))
 				} else if ch == '\'' || ch == '"' {
 					if self.after_number_or_to {
 						let (token, remaining) = parse_quote_unit(self.input);
 						self.input = remaining;
-						token
+						Some((token, offset))
 					} else {
 						// normal string literal, with possible escape sequences
 						let (token, remaining) = parse_string_literal(self.input, ch)?;
 						self.input = remaining;
-						token
+						Some((token, offset))
 					}
 				} else if ch == '@' {
 					// date literal, e.g. @1970-01-01
 					let (date, remaining) = parse_date(self.input)?;
 					self.input = remaining;
-					Token::Date(date)
+					Some((Token::Date(date), offset))
 				} else if self.input.starts_with("#\"") {
 					// raw string literal
 					let (_, remaining) = self.input.split_at(2);
@@ -877,26 +879,26 @@ impl<I: Interrupt> Lexer<'_, '_, I> {
 					let (literal, remaining) = remaining.split_at(literal_length);
 					let (_terminator, remaining) = remaining.split_at(2);
 					self.input = remaining;
-					Token::StringLiteral(literal.to_string().into())
+					Some((Token::StringLiteral(literal.to_string().into()), offset))
 				} else if is_valid_in_ident(ch, None) {
 					// dots aren't allowed in idents after a backslash
 					let (ident, remaining) =
 						parse_ident(self.input, self.after_backslash_state != 1)?;
 					self.input = remaining;
-					ident
+					Some((ident, offset))
 				} else {
 					let (_, remaining) = self.input.split_at(ch.len_utf8());
 					self.input = remaining;
-					parse_symbol(ch, &mut self.input)?
+					Some((parse_symbol(ch, &mut self.input)?, offset))
 				}
 			}
-			None => return Ok(None),
-		}))
+			None => None,
+		})
 	}
 }
 
 impl<I: Interrupt> Iterator for Lexer<'_, '_, I> {
-	type Item = FResult<Token>;
+	type Item = FResult<(Token, usize)>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = match self.next_token() {
@@ -906,12 +908,12 @@ impl<I: Interrupt> Iterator for Lexer<'_, '_, I> {
 		};
 		self.after_number_or_to = matches!(
 			res,
-			Some(Ok(Token::Num(_) | Token::Symbol(Symbol::UnitConversion)))
+			Some(Ok((Token::Num(_), _))) | Some(Ok((Token::Symbol(Symbol::UnitConversion), _)))
 		);
-		if matches!(res, Some(Ok(Token::Symbol(Symbol::Backslash)))) {
+		if matches!(res, Some(Ok((Token::Symbol(Symbol::Backslash), _)))) {
 			self.after_backslash_state = 1;
 		} else if self.after_backslash_state == 1 {
-			if let Some(Ok(Token::Ident(_))) = res {
+			if let Some(Ok((Token::Ident(_), _))) = res {
 				self.after_backslash_state = 2;
 			} else {
 				self.after_backslash_state = 0;
@@ -930,6 +932,7 @@ pub fn lex<'a, 'b, I: Interrupt>(
 ) -> Lexer<'a, 'b, I> {
 	Lexer {
 		input,
+		initial_len: input.len(),
 		after_backslash_state: 0,
 		after_number_or_to: false,
 		decimal_separator: ctx.decimal_separator,

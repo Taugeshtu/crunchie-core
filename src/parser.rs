@@ -8,7 +8,7 @@ struct ParserState {
 
     // Omnibus State Trackers
     active_sym: String,
-    sym_start_offset: u32,
+    sym_start_pos: Position,
     line: u32,
     col: u32,
     in_comment: bool,
@@ -23,7 +23,7 @@ impl ParserState {
             workspace: Workspace::default(),
             stack: Vec::new(),
             active_sym: String::new(),
-            sym_start_offset: 0,
+            sym_start_pos: Position::default(),
             line: 0,
             col: 0,
             in_comment: false,
@@ -59,8 +59,8 @@ impl ParserState {
         if !self.active_sym.is_empty() {
             let sym = self.active_sym.clone();
             let id = self.workspace.get_or_intern_atom(&sym);
-            let offset = self.sym_start_offset;
-            self.push_entity(Entity { id, offset });
+            let position = self.sym_start_pos;
+            self.push_entity(Entity { id, position });
             self.active_sym.clear();
         }
     }
@@ -161,7 +161,7 @@ pub fn sweep<'a>(
             '(' => {
                 state.flush_sym();
                 let new_cid = state.create_container(current_pos);
-                state.push_entity(Entity { id: new_cid, offset });
+                state.push_entity(Entity { id: new_cid, position: current_pos });
                 state.stack.push(new_cid);
             }
             ')' => {
@@ -204,12 +204,12 @@ pub fn sweep<'a>(
                     } else {
                         state.flush_sym();
                         let op_id = state.workspace.get_or_intern_atom(op);
-                        state.push_entity(Entity { id: op_id, offset });
+                        state.push_entity(Entity { id: op_id, position: current_pos });
                         state.skip_bytes = op.len() - char.len_utf8();
                     }
                 } else {
                     if state.active_sym.is_empty() {
-                        state.sym_start_offset = offset;
+                        state.sym_start_pos = current_pos;
                     }
                     state.active_sym.push(char);
                 }

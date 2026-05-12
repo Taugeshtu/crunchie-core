@@ -15,8 +15,8 @@ pub fn evaluate_to_value<I: Interrupt>(
 	let lex = lexer::lex(input, context, int);
 	let mut tokens = vec![];
 	let mut missing_open_parens: i32 = 0;
-	for token in lex {
-		let token = token?;
+	for token_res in lex {
+		let (token, _) = token_res?;
 		if matches!(token, lexer::Token::Symbol(lexer::Symbol::CloseParens)) {
 			missing_open_parens += 1;
 		}
