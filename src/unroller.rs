@@ -13,18 +13,16 @@ pub fn unroll(workspace: &mut Workspace) {
             let mut tape = Vec::new();
             
             match generate_tape(workspace, rpn, &mut tape) {
-                Ok(Some(final_id)) => {
+                Ok(Some(final_entity)) => {
                     let tape_id = workspace.next_id;
                     workspace.next_id += 1;
                     
                     let mut tape_entities = Vec::new();
                     
                     if tape.is_empty() {
-                        tape_entities.push(Entity { id: final_id, offset: entity.offset });
+                        tape_entities.push(final_entity);
                     } else {
-                        for instr_id in tape {
-                            tape_entities.push(Entity { id: instr_id, offset: entity.offset });
-                        }
+                        tape_entities.extend(tape);
                     }
                     
                     let start_pos = workspace.containers.get(&cid).map(|c| c.start_pos).unwrap_or_default();
@@ -211,8 +209,8 @@ fn process_operator(
     operator_stack.push(Entity { id: op_id, offset });
 }
 
-fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32>) -> Result<Option<i32>, u32> {
-    let mut value_stack = Vec::new();
+fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<Entity>) -> Result<Option<Entity>, u32> {
+    let mut value_stack: Vec<Entity> = Vec::new();
     
     for entity in rpn {
         let sym = workspace.atoms.get(&entity.id).cloned();
@@ -226,25 +224,28 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                         (Some(l), Some(r)) => {
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l, r] });
-                            tape.push(instr_id);
-                            value_stack.push(instr_id);
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l.id, r.id] });
+                            let instr_entity = Entity { id: instr_id, offset: entity.offset };
+                            tape.push(instr_entity);
+                            value_stack.push(instr_entity);
                         }
                         (None, Some(r)) => {
                             // Query (one operand provided, it's popped as 'right')
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![r] });
-                            tape.push(instr_id);
-                            value_stack.push(instr_id);
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![r.id] });
+                            let instr_entity = Entity { id: instr_id, offset: entity.offset };
+                            tape.push(instr_entity);
+                            value_stack.push(instr_entity);
                         }
                         (Some(l), None) => {
                             // Query (shouldn't happen with pop order but just in case)
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l] });
-                            tape.push(instr_id);
-                            value_stack.push(instr_id);
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l.id] });
+                            let instr_entity = Entity { id: instr_id, offset: entity.offset };
+                            tape.push(instr_entity);
+                            value_stack.push(instr_entity);
                         }
                         _ => {
                             return Err(entity.offset);
@@ -257,9 +258,10 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                     if let (Some(l), Some(r)) = (left, right) {
                         let instr_id = workspace.next_id;
                         workspace.next_id += 1;
-                        workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l, r] });
-                        tape.push(instr_id);
-                        value_stack.push(instr_id);
+                        workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l.id, r.id] });
+                        let instr_entity = Entity { id: instr_id, offset: entity.offset };
+                        tape.push(instr_entity);
+                        value_stack.push(instr_entity);
                     } else {
                         return Err(entity.offset);
                     }
@@ -270,15 +272,16 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                 if let Some(a) = arg {
                     let instr_id = workspace.next_id;
                     workspace.next_id += 1;
-                    workspace.atoms.insert(instr_id, Atom::Instruction { op: OpCode::Call, args: vec![entity.id, a] });
-                    tape.push(instr_id);
-                    value_stack.push(instr_id);
+                    workspace.atoms.insert(instr_id, Atom::Instruction { op: OpCode::Call, args: vec![entity.id, a.id] });
+                    let instr_entity = Entity { id: instr_id, offset: entity.offset };
+                    tape.push(instr_entity);
+                    value_stack.push(instr_entity);
                 } else {
                     return Err(entity.offset);
                 }
             }
             _ => {
-                value_stack.push(entity.id);
+                value_stack.push(entity);
             }
         }
     }

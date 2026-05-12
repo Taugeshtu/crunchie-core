@@ -7,11 +7,21 @@ fn run_pipeline(input: &str) -> String {
     let constants = config.constants.keys().map(|s| s.as_str());
 
     let mut workspace = parse(input, &builtins, constants);
-    distiller(&mut workspace);
-    janitor(&mut workspace);
-    unroller(&mut workspace);
+    let mut engine_result = evaluate(input, &mut workspace, &config);
     
-    print_workspace(&workspace)
+    // Merge engine diagnostics back into workspace for the printer
+    workspace.diagnostics.append(&mut engine_result.diagnostics);
+    
+    let mut out = print_workspace(&workspace);
+    
+    if !engine_result.edits.is_empty() {
+        out.push_str("\n  Edits:\n");
+        for edit in engine_result.edits {
+            out.push_str(&format!("    - Insert '{}' at offset {}\n", edit.new_text, edit.span.start.offset));
+        }
+    }
+    
+    out
 }
 
 #[test]
@@ -70,6 +80,7 @@ fn test_unroller_basics() {
         "3(1+2)",
         "x = 5",
         "x = ",
+        "x = 10; x = ",
         "sin(PI)",
     ];
     let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");

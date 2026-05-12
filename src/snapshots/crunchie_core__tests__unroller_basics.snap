@@ -93,6 +93,24 @@ Workspace {
 }
 
 ---
+Input: x = 10; x = 
+Workspace {
+  Lines:
+    Line 1:
+      [Container 10] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 10
+    Line 2:
+      [Container 13] 
+        [Instr] Fend(Equals)
+          [Var] x
+}
+
+  Edits:
+    - Insert ' 10' at offset 10
+
+---
 Input: sin(PI)
 Workspace {
   Lines:

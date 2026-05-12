@@ -42,18 +42,18 @@ pub fn unroller(workspace: &mut Workspace) {
 
 /// Stage 4: The Executioner
 /// Final pass that performs the actual computation using Fend.
-// pub fn executioner(_tape: model::Tape, _config: &Config) -> EngineResult {
-//     EngineResult::default() // Stub
-// }
+pub fn executioner(workspace: &mut Workspace, config: &Config) -> EngineResult {
+    let mut exec = engine::Executioner::new(workspace, config);
+    exec.execute()
+}
 
 /// Stage 2: Semantic Analysis & Evaluation
 /// Processes the Workspace, evaluates the math, and finds errors.
-pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config) -> EngineResult {
+pub fn evaluate(_text: &str, workspace: &mut Workspace, config: &Config) -> EngineResult {
     distiller(workspace);
     janitor(workspace);
     unroller(workspace);
-    // executioner(workspace, config)
-    EngineResult::default()
+    executioner(workspace, config)
 }
 
 /// Stage 3: Utility for applying fills
