@@ -9,24 +9,23 @@ The Distiller acts as the semantic bridge. It is a **typization** stage responsi
 *   **Input / Output**: `&mut Workspace`.
 *   **Mutation**: Refines `atoms` in the global map and inserts new expansion containers into `containers`.
 
-## Algorithm: Refine-then-Scan
+## Algorithm: Two-Pass Refinement
 
-The Distiller operates primarily on the `atoms` map to leverage the "Refine Once, Update Everywhere" property. It only touches containers to create expansions or to recover error provenance.
+To avoid race conditions where a compound monolith (e.g., `5x`) is processed before its components (e.g., `x = 10`) are identified as variables, the Distiller uses a two-pass approach.
 
-### 1. The Munch (Atom Refinement)
-The Distiller iterates directly over every `Atom::Raw` entry in `workspace.atoms`.
-*   Each string is sent to the **Fend Muncher** (the bridge to `fend-core`).
-*   The Muncher uses Fend's lexer to decompose the string into terminal values, units, and identifiers.
+### 1. Pass 1: Terminal Refinement
+The Distiller iterates over all `Atom::Raw` entries and attempts to resolve them.
+*   If a string resolves to a **single part** (e.g., `"x"` -> `Atom::Variable("x")`), it is updated in the `atoms` map immediately.
+*   This pass "seeds" the known identifiers set, ensuring that standalone variables and units are recognized before the next pass.
 
-### 2. Resolution & Refinement
-Based on the Muncher's output, the Distiller updates the `atoms` map:
-
-*   **1:1 Replacement**: If the string resolves to a single type (e.g., `"x"` becomes `Atom::Variable("x")`), the map is updated in-place. Every **Entity** in the workspace pointing to this ID is instantly refined.
+### 2. Pass 2: Expansion & Poisoning
+The Distiller processes the remaining atoms using the full set of identifiers collected in Pass 1.
+*   **1:1 Replacement**: Finalizes any single-part resolutions that weren't caught in Pass 1.
 *   **1:N Expansion**: If a string explodes into multiple parts (e.g., `5kg` becomes `5` and `kg`):
     1.  The Distiller mints new IDs for the components.
     2.  It creates a new expansion **Container** holding the new IDs.
     3.  It updates the original ID's entry in the `atoms` map to `Atom::Container(new_id)`.
-*   **Poisoning**: If munching fails, the atom is marked `Atom::Poison` and its ID is added to a `poisoned_ids` list.
+*   **Poisoning**: If munching still fails for an atom, it is marked `Atom::Poison` and its ID is added to a `poisoned_ids` list.
 
 ### 3. Provenance Recovery (The Error Scan)
 To keep the "happy path" fast, the Distiller only scans containers if `poisoned_ids` is not empty.

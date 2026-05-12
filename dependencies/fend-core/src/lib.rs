@@ -745,6 +745,22 @@ pub fn get_completions_for_prefix(mut prefix: &str) -> (usize, Vec<Completion>) 
 	(position, res)
 }
 
+pub fn get_builtin_functions() -> &'static [&'static str] {
+	&[
+		"abs", "acos", "acosh", "arg", "asin", "asinh", "atan", "atanh", "average", "cbrt", "ceil",
+		"conjugate", "cos", "cosh", "exp", "fib", "fibonacci", "floor", "imag", "im", "Im", "ln",
+		"log", "log10", "log2", "mean", "not", "real", "re", "Re", "roll", "round", "sample", "sin",
+		"sinh", "sqrt", "tan", "tanh",
+	]
+}
+
+pub fn get_builtin_constants() -> &'static [&'static str] {
+	&[
+		"pi", "tau", "e", "phi", "i", "true", "false", "c", "planck", "boltzmann", "avogadro",
+		"gravity", "light_speed", "lightspeed",
+	]
+}
+
 pub use inline_substitutions::substitute_inline_fend_expressions;
 
 const fn get_version_as_str() -> &'static str {

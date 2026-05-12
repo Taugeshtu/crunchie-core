@@ -56,9 +56,15 @@ pub fn generate_symbol_map() -> HashMap<String, i32> {
     }
 
     let mut func_id = FUNCTIONS_START_ID;
-    for &func in FUNCTIONS {
+    for &func in fend_core::get_builtin_functions() {
         m.insert(func.to_string(), func_id);
         func_id -= 1;
+    }
+
+    let mut const_id = CONSTANTS_START_ID;
+    for &c in fend_core::get_builtin_constants() {
+        m.insert(c.to_string(), const_id);
+        const_id += 1;
     }
 
     m

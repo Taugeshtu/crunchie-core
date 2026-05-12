@@ -86,12 +86,12 @@ impl OpCode {
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
-    /// The global ID counter for minting new symbols and containers.
+    /// The global ID counter for minting new atoms and containers.
     pub next_id: i32,
     
     /// The absolute source of truth for what an ID means.
     /// Both the Parser and the Distiller mint entries here.
-    pub symbols: HashMap<i32, Symbol>,       
+    pub atoms: HashMap<i32, Atom>,       
     
     /// For O(1) lookups during the Parser's initial string interning.
     pub intern_map: HashMap<String, i32>,    
@@ -104,37 +104,37 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn get_or_intern_symbol(&mut self, sym: &str) -> i32 {
+    pub fn get_or_intern_atom(&mut self, sym: &str) -> i32 {
         if let Some(&id) = self.intern_map.get(sym) {
             return id;
         }
         let id = self.next_id;
         self.next_id += 1;
         self.intern_map.insert(sym.to_string(), id);
-        self.symbols.insert(id, Symbol::Raw(sym.to_string()));
+        self.atoms.insert(id, Atom::Raw(sym.to_string()));
         id
     }
 
-    pub fn get_or_intern_symbol_typed(&mut self, sym: Symbol) -> i32 {
+    pub fn get_or_intern_atom_typed(&mut self, sym: Atom) -> i32 {
         // If it's Raw, we can use the intern_map. For other types, we might just mint new ones
         // or add them to the intern_map if they have a string representation.
         match &sym {
-            Symbol::Raw(s) | Symbol::Variable(s) | Symbol::Constant(s) | Symbol::Function(s) => {
+            Atom::Raw(s) | Atom::Variable(s) | Atom::Constant(s) | Atom::Function(s) => {
                 if let Some(&id) = self.intern_map.get(s) {
-                    // Update existing symbol if it was Raw but we now know it's a Variable, etc.
-                    self.symbols.insert(id, sym);
+                    // Update existing atom if it was Raw but we now know it's a Variable, etc.
+                    self.atoms.insert(id, sym);
                     return id;
                 }
                 let id = self.next_id;
                 self.next_id += 1;
                 self.intern_map.insert(s.clone(), id);
-                self.symbols.insert(id, sym);
+                self.atoms.insert(id, sym);
                 id
             }
             _ => {
                 let id = self.next_id;
                 self.next_id += 1;
-                self.symbols.insert(id, sym);
+                self.atoms.insert(id, sym);
                 id
             }
         }
@@ -145,7 +145,7 @@ impl Default for Workspace {
     fn default() -> Self {
         Self {
             next_id: 1,
-            symbols: HashMap::new(),
+            atoms: HashMap::new(),
             intern_map: HashMap::new(),
             containers: HashMap::new(),
             comments: Vec::new(),
@@ -176,19 +176,19 @@ impl Default for Container {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entity { 
-    /// The pointer to `Workspace.symbols`.
+    /// The pointer to `Workspace.atoms`.
     pub id: i32,
     /// Provenance: Where did this entity originate in the text buffer?
     pub offset: u32, 
 }
 
 #[derive(Debug, Clone)]
-pub enum Symbol {
+pub enum Atom {
     // --- Stage 1: Seeded by the Parser ---
     /// Unclassified alphanumeric monoliths (e.g., "5kg", "x")
     Raw(String),
     /// Points to a key in `Workspace.containers`
-    ContainerRef(i32), 
+    Container(i32), 
     Operator(OpCode),
     Function(String),
     Constant(String),
@@ -202,7 +202,7 @@ pub enum Symbol {
     Poison,
 
     // --- Stage 3: Minted by the Vectorizer (Aspiration) ---
-    /// Evaluated from ContainerRef during the vectorization pass
+    /// Evaluated from Container during the vectorization pass
     VectorRef(i32),
     /// Stage 3: Minted by the Unroller
     Instruction {
@@ -211,11 +211,11 @@ pub enum Symbol {
     },
 }
 
-impl PartialEq for Symbol {
+impl PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Raw(a), Self::Raw(b)) => a == b,
-            (Self::ContainerRef(a), Self::ContainerRef(b)) => a == b,
+            (Self::Container(a), Self::Container(b)) => a == b,
             (Self::Operator(a), Self::Operator(b)) => a == b,
             (Self::Function(a), Self::Function(b)) => a == b,
             (Self::Constant(a), Self::Constant(b)) => a == b,

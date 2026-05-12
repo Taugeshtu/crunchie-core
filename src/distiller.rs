@@ -1,9 +1,9 @@
-use crate::model::{Symbol, Workspace, Entity, Diagnostic, DiagnosticCode, Span, Position};
+use crate::model::{Atom, Workspace, Entity, Diagnostic, DiagnosticCode, Span, Position};
 use std::collections::{HashSet, HashMap};
 use fend_core::{lexer, Context, interrupt::Never, value::Value as FendValue};
 
 /// The Distiller acts as the semantic bridge.
-/// It converts Symbol::Raw strings into typed symbols using Fend's lexer.
+/// It converts Atom::Raw strings into typed atoms using Fend's lexer.
 pub fn distill(workspace: &mut Workspace) {
     let mut ctx = Context::new();
     let int = Never;
@@ -11,24 +11,52 @@ pub fn distill(workspace: &mut Workspace) {
     // 1. Scout for all identifiers (Variables, Constants, Functions)
     let known_identifiers = collect_known_identifiers(workspace);
 
-    // 2. Identify all Raw symbols and at least one representative offset for each.
-    // This avoids borrowing conflicts and ensures we have provenance for diagnostics.
-    let mut raw_work = HashMap::new(); // Map<ID, (offset, text)>
+    // 2. Identify all Raw atoms.
+    let mut raw_ids: Vec<i32> = Vec::new();
+    let mut id_to_offset = HashMap::new();
+
     for container in workspace.containers.values() {
         for entity in &container.contents {
-            if let Some(Symbol::Raw(s)) = workspace.symbols.get(&entity.id) {
-                if !raw_work.contains_key(&entity.id) {
-                    raw_work.insert(entity.id, (entity.offset, s.clone()));
+            if let Some(Atom::Raw(_)) = workspace.atoms.get(&entity.id) {
+                if !id_to_offset.contains_key(&entity.id) {
+                    raw_ids.push(entity.id);
+                    id_to_offset.insert(entity.id, entity.offset);
                 }
             }
         }
     }
 
-    for (id, (offset, sym_text)) in raw_work {
-        let results = fend_munch(&sym_text, &known_identifiers, &mut ctx, &int);
+    // Pass 1: Process atoms that result in a 1:1 replacement.
+    // This populates known_identifiers for Pass 2.
+    let mut remaining_ids = Vec::new();
+    let mut current_known = known_identifiers;
+
+    for id in raw_ids {
+        let text = if let Some(Atom::Raw(s)) = workspace.atoms.get(&id) {
+            s.clone()
+        } else {
+            continue;
+        };
         
-        if results.is_empty() || results.iter().any(|s| matches!(s, Symbol::Poison)) {
-            workspace.symbols.insert(id, Symbol::Poison);
+        let results = fend_munch(&text, &current_known, &mut ctx, &int);
+        if results.len() == 1 && !matches!(results[0], Atom::Poison) {
+            let atom = results[0].clone();
+            if let Atom::Variable(s) = &atom {
+                current_known.insert(s.clone());
+            }
+            workspace.atoms.insert(id, atom);
+        } else {
+            remaining_ids.push((id, text));
+        }
+    }
+
+    // Pass 2: Process remaining atoms (expansions and poison).
+    for (id, sym_text) in remaining_ids {
+        let results = fend_munch(&sym_text, &current_known, &mut ctx, &int);
+        let offset = id_to_offset.get(&id).cloned().unwrap_or(0);
+        
+        if results.is_empty() || results.iter().any(|s| matches!(s, Atom::Poison)) {
+            workspace.atoms.insert(id, Atom::Poison);
             
             workspace.diagnostics.push(Diagnostic {
                 code: DiagnosticCode::MalformedSymbol,
@@ -41,13 +69,12 @@ pub fn distill(workspace: &mut Workspace) {
         }
 
         if results.len() == 1 {
-            // 1:1 Replacement
-            workspace.symbols.insert(id, results[0].clone());
+            workspace.atoms.insert(id, results[0].clone());
         } else {
-            // 1:N Expansion (ContainerRef trick)
+            // 1:N Expansion (Container trick)
             let mut entities = Vec::new();
             for part in results {
-                let part_id = workspace.get_or_intern_symbol_typed(part);
+                let part_id = workspace.get_or_intern_atom_typed(part);
                 entities.push(Entity { id: part_id, offset: u32::MAX }); // Inherit parent offset
             }
             
@@ -59,16 +86,16 @@ pub fn distill(workspace: &mut Workspace) {
                 start_pos: Position::default(),
             });
             
-            workspace.symbols.insert(id, Symbol::ContainerRef(container_id));
+            workspace.atoms.insert(id, Atom::Container(container_id));
         }
     }
 }
 
 fn collect_known_identifiers(workspace: &Workspace) -> HashSet<String> {
     let mut idents = HashSet::new();
-    for sym in workspace.symbols.values() {
+    for sym in workspace.atoms.values() {
         match sym {
-            Symbol::Variable(s) | Symbol::Constant(s) | Symbol::Function(s) => {
+            Atom::Variable(s) | Atom::Constant(s) | Atom::Function(s) => {
                 idents.insert(s.clone());
             }
             _ => {}
@@ -82,11 +109,11 @@ fn fend_munch(
     known_identifiers: &HashSet<String>,
     ctx: &mut Context,
     int: &Never
-) -> Vec<Symbol> {
+) -> Vec<Atom> {
     if s.is_empty() { return vec![]; }
 
     let lex = lexer::lex(s, ctx, int);
-    let mut symbols = Vec::new();
+    let mut atoms = Vec::new();
     let attrs = fend_core::eval::Attrs::default();
 
     for token_res in lex {
@@ -95,10 +122,10 @@ fn fend_munch(
                 match token {
                     lexer::Token::Num(n) => {
                         // Prevent multiple numbers in a single monolith (e.g. "5 5")
-                        if symbols.iter().any(|s| matches!(s, Symbol::Value(_))) {
-                            return vec![Symbol::Poison];
+                        if atoms.iter().any(|s| matches!(s, Atom::Value(_))) {
+                            return vec![Atom::Poison];
                         }
-                        symbols.push(Symbol::Value(FendValue::Num(Box::new(n))));
+                        atoms.push(Atom::Value(FendValue::Num(Box::new(n))));
                     }
                     lexer::Token::Ident(ident) => {
                         let name = ident.as_str();
@@ -106,22 +133,23 @@ fn fend_munch(
                         if s.len() > name.len() {
                             let is_unit = fend_core::units::query_unit_static(name, attrs, ctx, int).is_ok();
                             if !is_unit && !known_identifiers.contains(name) {
-                                return vec![Symbol::Poison];
+                                return vec![Atom::Poison];
                             }
                         }
-                        symbols.push(Symbol::Variable(name.to_string()));
+                        atoms.push(Atom::Variable(name.to_string()));
                     }
-                    // Any structural Symbol, StringLiteral, or Date found INSIDE a Raw monolith 
+                    // Any structural Atom, StringLiteral, or Date found INSIDE a Raw monolith 
                     // is an error because the Parser should have split it out.
-                    _ => return vec![Symbol::Poison],
+                    _ => return vec![Atom::Poison],
                 }
             }
-            Err(_) => return vec![Symbol::Poison],
+            Err(_) => return vec![Atom::Poison],
         }
     }
 
-    if symbols.is_empty() {
-        return vec![Symbol::Poison];
+    if atoms.is_empty() {
+        return vec![Atom::Poison];
     }
-    symbols
+    atoms
 }
+

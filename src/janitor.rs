@@ -1,4 +1,4 @@
-use crate::model::{Entity, Symbol, Workspace, Container, Diagnostic, DiagnosticCode, Span, Position};
+use crate::model::{Entity, Atom, Workspace, Container, Diagnostic, DiagnosticCode, Span, Position};
 
 /// The Janitor scrubs the topological soup.
 /// 1. Breaks Root into Lines.
@@ -48,26 +48,21 @@ pub fn scrub(workspace: &mut Workspace) {
     }
 }
 
-/// Creates a line container, but recursively "unwraps" it if the contents 
-/// are just a single container, ensuring lines are as flat as possible.
+/// Creates a line container and aggressively unwraps it if it only contains
+/// a single other container, ensuring lines are as flat as possible.
 fn maybe_promote_line(workspace: &mut Workspace, contents: Vec<Entity>) -> i32 {
     let mut current_contents = contents;
     let mut corrupted = false;
 
+    // Aggressive De-stacking: If we only contain a single other container, 
+    // we take its contents and repeat.
     while current_contents.len() == 1 {
         let id = current_contents[0].id;
-        if let Some(Symbol::ContainerRef(cid)) = workspace.symbols.get(&id) {
+        if let Some(Atom::Container(cid)) = workspace.atoms.get(&id) {
             if let Some(inner) = workspace.containers.get(cid) {
-                // Only collapse if the inner container also only has one child
-                // AND that child is ANOTHER container. This collapses (((5))) -> (5)
-                if inner.contents.len() == 1 {
-                    let child_id = inner.contents[0].id;
-                    if matches!(workspace.symbols.get(&child_id), Some(Symbol::ContainerRef(_))) {
-                        corrupted |= inner.corrupted;
-                        current_contents = inner.contents.clone();
-                        continue;
-                    }
-                }
+                corrupted |= inner.corrupted;
+                current_contents = inner.contents.clone();
+                continue;
             }
         }
         break;
@@ -78,9 +73,9 @@ fn maybe_promote_line(workspace: &mut Workspace, contents: Vec<Entity>) -> i32 {
     workspace.containers.insert(id, Container {
         contents: current_contents,
         corrupted,
-        start_pos: Position { offset: 0, line: 0, col: 0 }, // TODO: accurate start_pos
+        start_pos: Position { offset: 0, line: 0, col: 0 },
     });
-    workspace.symbols.insert(id, Symbol::ContainerRef(id));
+    workspace.atoms.insert(id, Atom::Container(id));
     id
 }
 
@@ -94,7 +89,7 @@ fn process_sequence(
     let mut rebuilt = Vec::new();
 
     for entity in entities {
-        if let Some(Symbol::ContainerRef(cid)) = workspace.symbols.get(&entity.id).cloned() {
+        if let Some(Atom::Container(cid)) = workspace.atoms.get(&entity.id).cloned() {
             // Recurse into nested container
             let inner_contents = if let Some(c) = workspace.containers.get(&cid) {
                 c.contents.clone()
@@ -102,18 +97,29 @@ fn process_sequence(
                 Vec::new()
             };
 
-            let cleaned_inner = process_sequence(workspace, inner_contents, comma_id, newline_id, semicolon_id);
+            let mut cleaned_inner = process_sequence(workspace, inner_contents, comma_id, newline_id, semicolon_id);
             
-            // Redundant Container Collapsing: ( (x) ) -> (x)
-            if cleaned_inner.len() == 1 {
+            // Redundant Nesting Collapse (Step A): 
+            // If the cleaned container only contains a single other container, unwrap it.
+            while cleaned_inner.len() == 1 {
                 let child_id = cleaned_inner[0].id;
-                if matches!(workspace.symbols.get(&child_id), Some(Symbol::ContainerRef(_))) {
-                    rebuilt.push(cleaned_inner[0]);
-                    continue;
+                if let Some(Atom::Container(inner_cid)) = workspace.atoms.get(&child_id) {
+                    if let Some(inner_c) = workspace.containers.get(inner_cid) {
+                        let inner_corrupted = inner_c.corrupted;
+                        let inner_contents = inner_c.contents.clone();
+                        
+                        // OR corrupted flags upward
+                        if let Some(c) = workspace.containers.get_mut(&cid) {
+                            c.corrupted |= inner_corrupted;
+                        }
+                        cleaned_inner = inner_contents;
+                        continue;
+                    }
                 }
+                break;
             }
             
-            // Otherwise, keep the container but update its cleaned contents
+            // Update the container with its (potentially unwrapped) contents
             if let Some(c) = workspace.containers.get_mut(&cid) {
                 c.contents = cleaned_inner;
             }

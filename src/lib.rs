@@ -9,8 +9,7 @@ pub mod engine;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
-use std::collections::{HashMap, HashSet};
-use engine::Engine;
+use std::collections::HashMap;
 
 /// Stage 1: Structural Extraction
 /// Performs the One-Pass Sweep. Returns a structural tree.
@@ -22,16 +21,16 @@ pub fn parse<'a>(
     parser::sweep(text, builtins, constants)
 }
 
-/// Stage 2.1: The Janitor
+/// Stage 2.1: The Distiller
+/// Assigns roles to atoms and marries values to their units.
+pub fn distiller(workspace: &mut Workspace) {
+    distiller::distill(workspace);
+}
+
+/// Stage 2.2: The Janitor
 /// Scrubs the raw structural soup for mathematical sanity.
 pub fn janitor(workspace: &mut Workspace) {
     janitor::scrub(workspace);
-}
-
-/// Stage 2.2: The Distiller
-/// Assigns roles to symbols and marries values to their units.
-pub fn distiller(workspace: &mut Workspace) {
-    distiller::distill(workspace);
 }
 
 /// Stage 2.3: The Unroller
@@ -49,8 +48,8 @@ pub fn unroller(workspace: &mut Workspace) {
 /// Stage 2: Semantic Analysis & Evaluation
 /// Processes the Workspace, evaluates the math, and finds errors.
 pub fn evaluate(_text: &str, workspace: &mut Workspace, _config: &Config) -> EngineResult {
-    janitor(workspace);
     distiller(workspace);
+    janitor(workspace);
     unroller(workspace);
     // executioner(workspace, config)
     EngineResult::default()

@@ -1,4 +1,4 @@
-use crate::model::{OpCode, FendOp, Symbol, Workspace, Entity, Container};
+use crate::model::{OpCode, FendOp, Atom, Workspace, Entity, Container};
 
 pub fn unroll(workspace: &mut Workspace) {
     let root_contents = if let Some(root) = workspace.containers.get(&0) {
@@ -8,17 +8,24 @@ pub fn unroll(workspace: &mut Workspace) {
     };
 
     for entity in root_contents {
-        if let Some(Symbol::ContainerRef(cid)) = workspace.symbols.get(&entity.id).cloned() {
+        if let Some(Atom::Container(cid)) = workspace.atoms.get(&entity.id).cloned() {
             let rpn = get_rpn(workspace, cid, entity.offset);
             let mut tape = Vec::new();
             
-            if let Some(_) = generate_tape(workspace, rpn, &mut tape) {
+            if let Some(final_id) = generate_tape(workspace, rpn, &mut tape) {
                 let tape_id = workspace.next_id;
                 workspace.next_id += 1;
                 
                 let mut tape_entities = Vec::new();
-                for instr_id in tape {
-                    tape_entities.push(Entity { id: instr_id, offset: entity.offset });
+                
+                if tape.is_empty() {
+                    // No instructions were minted (e.g. single value/variable), 
+                    // so we just put the final operand ID into the tape.
+                    tape_entities.push(Entity { id: final_id, offset: entity.offset });
+                } else {
+                    for instr_id in tape {
+                        tape_entities.push(Entity { id: instr_id, offset: entity.offset });
+                    }
                 }
                 
                 let start_pos = workspace.containers.get(&cid).map(|c| c.start_pos).unwrap_or_default();
@@ -28,7 +35,7 @@ pub fn unroll(workspace: &mut Workspace) {
                     start_pos,
                 });
                 
-                workspace.symbols.insert(entity.id, Symbol::ContainerRef(tape_id));
+                workspace.atoms.insert(entity.id, Atom::Container(tape_id));
             }
         }
     }
@@ -37,7 +44,7 @@ pub fn unroll(workspace: &mut Workspace) {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum EntityKind {
     Quantity,
-    ContainerRef,
+    Container,
     Variable,
     Constant,
     Function,
@@ -46,27 +53,27 @@ enum EntityKind {
 }
 
 fn get_entity_kind(workspace: &Workspace, entity: &Entity) -> EntityKind {
-    match workspace.symbols.get(&entity.id) {
-        Some(Symbol::Value(_)) => EntityKind::Quantity,
-        Some(Symbol::Variable(_)) => EntityKind::Variable,
-        Some(Symbol::Constant(_)) => EntityKind::Constant,
-        Some(Symbol::Function(_)) => EntityKind::Function,
-        Some(Symbol::Operator(op)) => EntityKind::Operator(*op),
-        Some(Symbol::ContainerRef(_)) => EntityKind::ContainerRef,
+    match workspace.atoms.get(&entity.id) {
+        Some(Atom::Value(_)) => EntityKind::Quantity,
+        Some(Atom::Variable(_)) => EntityKind::Variable,
+        Some(Atom::Constant(_)) => EntityKind::Constant,
+        Some(Atom::Function(_)) => EntityKind::Function,
+        Some(Atom::Operator(op)) => EntityKind::Operator(*op),
+        Some(Atom::Container(_)) => EntityKind::Container,
         _ => EntityKind::Other,
     }
 }
 
 fn should_inject_mul(left: EntityKind, right: EntityKind) -> bool {
     match (left, right) {
-        (EntityKind::Quantity, EntityKind::ContainerRef) => true,
+        (EntityKind::Quantity, EntityKind::Container) => true,
         (EntityKind::Quantity, EntityKind::Variable) => true,
         (EntityKind::Quantity, EntityKind::Constant) => true,
-        (EntityKind::ContainerRef, EntityKind::ContainerRef) => true,
-        (EntityKind::ContainerRef, EntityKind::Variable) => true,
-        (EntityKind::ContainerRef, EntityKind::Constant) => true,
-        (EntityKind::Variable, EntityKind::ContainerRef) => true,
-        (EntityKind::Constant, EntityKind::ContainerRef) => true,
+        (EntityKind::Container, EntityKind::Container) => true,
+        (EntityKind::Container, EntityKind::Variable) => true,
+        (EntityKind::Container, EntityKind::Constant) => true,
+        (EntityKind::Variable, EntityKind::Container) => true,
+        (EntityKind::Constant, EntityKind::Container) => true,
         _ => false,
     }
 }
@@ -94,7 +101,7 @@ fn get_rpn(workspace: &mut Workspace, container_id: i32, parent_offset: u32) -> 
     let mut operator_stack = Vec::new();
     let mut last_kind = None;
 
-    let mul_op_id = workspace.get_or_intern_symbol_typed(Symbol::Operator(OpCode::Fend(FendOp::Mul)));
+    let mul_op_id = workspace.get_or_intern_atom_typed(Atom::Operator(OpCode::Fend(FendOp::Mul)));
 
     for mut entity in contents {
         // --- Inherited Offset Support ---
@@ -115,8 +122,8 @@ fn get_rpn(workspace: &mut Workspace, container_id: i32, parent_offset: u32) -> 
                 output_queue.push(entity);
                 last_kind = Some(kind);
             }
-            EntityKind::ContainerRef => {
-                if let Some(Symbol::ContainerRef(cid)) = workspace.symbols.get(&entity.id) {
+            EntityKind::Container => {
+                if let Some(Atom::Container(cid)) = workspace.atoms.get(&entity.id) {
                     let nested_rpn = get_rpn(workspace, *cid, entity.offset);
                     output_queue.extend(nested_rpn);
                 }
@@ -151,18 +158,18 @@ fn process_operator(
     output_queue: &mut Vec<Entity>,
     offset: u32
 ) {
-    let current_prec = if let Some(Symbol::Operator(op)) = workspace.symbols.get(&op_id) {
+    let current_prec = if let Some(Atom::Operator(op)) = workspace.atoms.get(&op_id) {
         get_precedence(*op)
-    } else if let Some(Symbol::Function(_)) = workspace.symbols.get(&op_id) {
+    } else if let Some(Atom::Function(_)) = workspace.atoms.get(&op_id) {
         get_precedence(OpCode::Call)
     } else {
         0
     };
 
     while let Some(top_entity) = operator_stack.last() {
-        let top_prec = if let Some(Symbol::Operator(top_op)) = workspace.symbols.get(&top_entity.id) {
+        let top_prec = if let Some(Atom::Operator(top_op)) = workspace.atoms.get(&top_entity.id) {
             get_precedence(*top_op)
-        } else if let Some(Symbol::Function(_)) = workspace.symbols.get(&top_entity.id) {
+        } else if let Some(Atom::Function(_)) = workspace.atoms.get(&top_entity.id) {
             get_precedence(OpCode::Call)
         } else {
             0
@@ -181,9 +188,9 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
     let mut value_stack = Vec::new();
     
     for entity in rpn {
-        let sym = workspace.symbols.get(&entity.id).cloned();
+        let sym = workspace.atoms.get(&entity.id).cloned();
         match sym {
-            Some(Symbol::Operator(op)) => {
+            Some(Atom::Operator(op)) => {
                 if matches!(op, OpCode::Fend(FendOp::Equals) | OpCode::AddAssign | OpCode::SubAssign | OpCode::MulAssign | OpCode::DivAssign) {
                     let right = value_stack.pop();
                     let left = value_stack.pop();
@@ -192,7 +199,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                         (Some(l), Some(r)) => {
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.symbols.insert(instr_id, Symbol::Instruction { op, args: vec![l, r] });
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l, r] });
                             tape.push(instr_id);
                             value_stack.push(instr_id);
                         }
@@ -200,7 +207,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                             // Query (one operand provided, it's popped as 'right')
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.symbols.insert(instr_id, Symbol::Instruction { op, args: vec![r] });
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![r] });
                             tape.push(instr_id);
                             value_stack.push(instr_id);
                         }
@@ -208,7 +215,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                             // Query (shouldn't happen with pop order but just in case)
                             let instr_id = workspace.next_id;
                             workspace.next_id += 1;
-                            workspace.symbols.insert(instr_id, Symbol::Instruction { op, args: vec![l] });
+                            workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l] });
                             tape.push(instr_id);
                             value_stack.push(instr_id);
                         }
@@ -223,7 +230,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                     if let (Some(l), Some(r)) = (left, right) {
                         let instr_id = workspace.next_id;
                         workspace.next_id += 1;
-                        workspace.symbols.insert(instr_id, Symbol::Instruction { op, args: vec![l, r] });
+                        workspace.atoms.insert(instr_id, Atom::Instruction { op, args: vec![l, r] });
                         tape.push(instr_id);
                         value_stack.push(instr_id);
                     } else {
@@ -231,12 +238,12 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                     }
                 }
             }
-            Some(Symbol::Function(_)) => {
+            Some(Atom::Function(_)) => {
                 let arg = value_stack.pop();
                 if let Some(a) = arg {
                     let instr_id = workspace.next_id;
                     workspace.next_id += 1;
-                    workspace.symbols.insert(instr_id, Symbol::Instruction { op: OpCode::Call, args: vec![entity.id, a] });
+                    workspace.atoms.insert(instr_id, Atom::Instruction { op: OpCode::Call, args: vec![entity.id, a] });
                     tape.push(instr_id);
                     value_stack.push(instr_id);
                 }

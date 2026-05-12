@@ -1,4 +1,4 @@
-use crate::model::{Container, Diagnostic, DiagnosticCode, Entity, OpCode, Position, Span, Symbol, Workspace};
+use crate::model::{Container, Diagnostic, DiagnosticCode, Entity, Position, Span, Atom, Workspace};
 use crate::builtins;
 use std::collections::HashMap;
 
@@ -38,7 +38,7 @@ impl ParserState {
         let id = self.workspace.next_id;
         self.workspace.next_id += 1;
         self.workspace.containers.insert(id, Container::default());
-        self.workspace.symbols.insert(id, Symbol::ContainerRef(id));
+        self.workspace.atoms.insert(id, Atom::Container(id));
         id
     }
 
@@ -55,7 +55,7 @@ impl ParserState {
     fn flush_sym(&mut self) {
         if !self.active_sym.is_empty() {
             let sym = self.active_sym.clone();
-            let id = self.workspace.get_or_intern_symbol(&sym);
+            let id = self.workspace.get_or_intern_atom(&sym);
             let offset = self.sym_start_offset;
             self.push_entity(Entity { id, offset });
             self.active_sym.clear();
@@ -74,26 +74,26 @@ pub fn sweep<'a>(
     for (k, v) in builtins {
         state.workspace.intern_map.insert(k.clone(), *v);
         let sym = if *v >= builtins::CONSTANTS_START_ID {
-            Symbol::Constant(k.clone())
+            Atom::Constant(k.clone())
         } else if *v <= builtins::FUNCTIONS_START_ID {
-            Symbol::Function(k.clone())
+            Atom::Function(k.clone())
         } else if *v <= -1 {
             if let Some(op) = builtins::get_operator(k) {
-                Symbol::Operator(op)
+                Atom::Operator(op)
             } else {
-                Symbol::Raw(k.clone())
+                Atom::Raw(k.clone())
             }
         } else {
-            Symbol::Raw(k.clone())
+            Atom::Raw(k.clone())
         };
-        state.workspace.symbols.insert(*v, sym);
+        state.workspace.atoms.insert(*v, sym);
     }
 
     let mut current_constant_id = builtins::CONSTANTS_START_ID;
     for c in constants {
         if !state.workspace.intern_map.contains_key(c) {
             state.workspace.intern_map.insert(c.to_string(), current_constant_id);
-            state.workspace.symbols.insert(current_constant_id, Symbol::Constant(c.to_string()));
+            state.workspace.atoms.insert(current_constant_id, Atom::Constant(c.to_string()));
             current_constant_id += 1;
         }
     }
@@ -200,7 +200,7 @@ pub fn sweep<'a>(
                         state.skip_bytes = op.len() - char.len_utf8();
                     } else {
                         state.flush_sym();
-                        let op_id = state.workspace.get_or_intern_symbol(op);
+                        let op_id = state.workspace.get_or_intern_atom(op);
                         state.push_entity(Entity { id: op_id, offset });
                         state.skip_bytes = op.len() - char.len_utf8();
                     }

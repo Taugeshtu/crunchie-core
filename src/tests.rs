@@ -4,36 +4,36 @@ use fend_core::{Context, Attrs, interrupt::Never};
 
 /// Helper to turn the flat topology back into nested vectors for easy assertions,
 /// matching the logic from the Python prototype's `reconstruct` function.
-fn resolve_symbol(id: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> serde_json::Value {
+fn resolve_atom(id: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> serde_json::Value {
     let mut ctx = Context::new();
     let int = Never;
     let attrs = Attrs::default();
 
-    match workspace.symbols.get(&id) {
-        Some(model::Symbol::ContainerRef(child_cid)) => {
+    match workspace.atoms.get(&id) {
+        Some(model::Atom::Container(child_cid)) => {
             serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern))
         }
-        Some(model::Symbol::Value(v)) => {
+        Some(model::Atom::Value(v)) => {
             let mut spans = Vec::new();
             v.format(0, &mut spans, attrs, false, &mut ctx, &int).unwrap();
             let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
             serde_json::Value::String(format!("V:{}", formatted))
         }
-        Some(model::Symbol::Variable(v)) => serde_json::Value::String(format!("VAR:{}", v)),
-        Some(model::Symbol::Operator(op)) => serde_json::Value::String(format!("O:{:?}", op)),
-        Some(model::Symbol::Constant(c)) => serde_json::Value::String(format!("C:{}", c)),
-        Some(model::Symbol::Function(f)) => serde_json::Value::String(format!("F:{}", f)),
-        Some(model::Symbol::Instruction { op, args }) => {
+        Some(model::Atom::Variable(v)) => serde_json::Value::String(format!("VAR:{}", v)),
+        Some(model::Atom::Operator(op)) => serde_json::Value::String(format!("O:{:?}", op)),
+        Some(model::Atom::Constant(c)) => serde_json::Value::String(format!("C:{}", c)),
+        Some(model::Atom::Function(f)) => serde_json::Value::String(format!("F:{}", f)),
+        Some(model::Atom::Instruction { op, args }) => {
             let arg_strs: Vec<String> = args.iter().map(|&aid| {
-                match resolve_symbol(aid, workspace, reverse_intern) {
+                match resolve_atom(aid, workspace, reverse_intern) {
                     serde_json::Value::String(s) => s,
                     _ => "?".to_string()
                 }
             }).collect();
             serde_json::Value::String(format!("I:{:?}({})", op, arg_strs.join(", ")))
         }
-        Some(model::Symbol::Poison) => serde_json::Value::String("POISON".to_string()),
-        Some(model::Symbol::Raw(s)) => serde_json::Value::String(format!("R:{}", s)),
+        Some(model::Atom::Poison) => serde_json::Value::String("POISON".to_string()),
+        Some(model::Atom::Raw(s)) => serde_json::Value::String(format!("R:{}", s)),
         _ => serde_json::Value::String(reverse_intern.get(&id).cloned().unwrap_or_else(|| {
             format!("?{}?", id)
         })),
@@ -44,7 +44,7 @@ fn resolve_container(cid: i32, workspace: &Workspace, reverse_intern: &HashMap<i
     let mut res = Vec::new();
     if let Some(container) = workspace.containers.get(&cid) {
         for entity in &container.contents {
-            res.push(resolve_symbol(entity.id, workspace, reverse_intern));
+            res.push(resolve_atom(entity.id, workspace, reverse_intern));
         }
     }
     res
@@ -63,9 +63,9 @@ fn test_distiller_basics() {
     let cases = [
         ("5", r#"[["V:5"]]"#),
         ("x = 5kg", r#"[["VAR:x", "O:Fend(Equals)", ["V:5", "VAR:kg"]]]"#),
-        ("10cm3", r#"[ [ ["V:10", "VAR:cm3"] ] ]"#), 
+        ("10cm3", r#"[["V:10", "VAR:cm3"]]"#), 
         ("0xFF", r#"[["V:0xff"]]"#),
-        ("5M", r#"[ [ ["V:5", "VAR:M"] ] ]"#),
+        ("5M", r#"[["V:5", "VAR:M"]]"#),
         ("5 + 2", r#"[["V:5", "O:Fend(Add)", "V:2"]]"#),
         ("sin(PI)", r#"[["F:sin", ["C:PI"]]]"#),
         ("cos(TAU)", r#"[["F:cos", ["C:TAU"]]]"#),
@@ -78,8 +78,8 @@ fn test_distiller_basics() {
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
-        janitor(&mut workspace);
         distiller(&mut workspace);
+        janitor(&mut workspace);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
@@ -95,7 +95,7 @@ fn test_distiller_poison() {
     let mut workspace = parse("1.2.3", &builtins, std::iter::empty::<&str>());
     distiller(&mut workspace);
     
-    assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
+    assert!(workspace.atoms.values().any(|s| matches!(s, model::Atom::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
 }
 
@@ -106,7 +106,7 @@ fn test_distiller_smart_splitting_garbage() {
     let mut workspace = parse("65kg123", &builtins, std::iter::empty::<&str>());
     distiller(&mut workspace);
     
-    assert!(workspace.symbols.values().any(|s| matches!(s, model::Symbol::Poison)));
+    assert!(workspace.atoms.values().any(|s| matches!(s, model::Atom::Poison)));
     assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
 }
 
@@ -179,8 +179,8 @@ fn test_unroller_basics() {
 
     for (input, expected_json) in cases {
         let mut workspace = parse(input, &builtins, constants.clone());
-        janitor(&mut workspace);
         distiller(&mut workspace);
+        janitor(&mut workspace);
         unroller(&mut workspace);
         
         let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
