@@ -121,3 +121,33 @@ fn test_illegal_math_pipeline() {
     let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn test_curse_blessed_integration() {
+    let input = r#"
+# 1. The Blessing: Pure physics and variables
+radius = 10cm; height = 0.5m
+volume = PI * radius^2 * height
+volume to liters = 
+
+# 2. The Jolt: Hex, Binary, and Suffixes combined
+base_freq = 0xFF Hz + 0b1000 Hz
+clock_speed = base_freq * 2M
+clock_speed =
+
+# 3. The Curse: Dimensional poisoning
+bad_mix = 5kg + 10m
+dependent_poison = bad_mix * 2
+
+# 4. The Resilience: Independent math survives
+recovery = 42 + 8
+recovery = 
+
+# 5. The Chaos: Syntax and stray tokens
+stray_math = 10 + ) * 5
+missing_close = (100 / 2
+another_recovery = 5k + 2k =
+"#;
+    let output = format!("Input:\n{}\n\nOutput:\n{}", input.trim(), run_pipeline(input.trim()));
+    insta::assert_snapshot!(output);
+}

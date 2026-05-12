@@ -1,0 +1,278 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input:
+# 1. The Blessing: Pure physics and variables
+radius = 10cm; height = 0.5m
+volume = PI * radius^2 * height
+volume to liters = 
+
+# 2. The Jolt: Hex, Binary, and Suffixes combined
+base_freq = 0xFF Hz + 0b1000 Hz
+clock_speed = base_freq * 2M
+clock_speed =
+
+# 3. The Curse: Dimensional poisoning
+bad_mix = 5kg + 10m
+dependent_poison = bad_mix * 2
+
+# 4. The Resilience: Independent math survives
+recovery = 42 + 8
+recovery = 
+
+# 5. The Chaos: Syntax and stray tokens
+stray_math = 10 + ) * 5
+missing_close = (100 / 2
+another_recovery = 5k + 2k =
+
+Output:
+Workspace {
+  Diagnostics:
+    - StrayCloser at offset 480
+    - UnclosedContainer at offset 0
+    - MalformedExpression at offset 306
+    - MalformedExpression at offset 339
+    - MalformedExpression at offset 478
+  Lines:
+    Line 1:
+      [Container 69] 
+        [Instr] Fend(Mul)
+          [Value] 10
+          [Var] cm
+        [Instr] Fend(Equals)
+          [Var] radius
+          [Instr] Fend(Mul)
+            [Value] 10
+            [Var] cm
+    Line 2:
+      [Container 74] 
+        [Instr] Fend(Mul)
+          [Value] 0.5
+          [Var] m
+        [Instr] Fend(Equals)
+          [Var] height
+          [Instr] Fend(Mul)
+            [Value] 0.5
+            [Var] m
+    Line 3:
+      [Container 80] 
+        [Instr] Fend(Pow)
+          [Var] radius
+          [Value] 2
+        [Instr] Fend(Mul)
+          [Const] PI
+          [Instr] Fend(Pow)
+            [Var] radius
+            [Value] 2
+        [Instr] Fend(Mul)
+          [Instr] Fend(Mul)
+            [Const] PI
+            [Instr] Fend(Pow)
+              [Var] radius
+              [Value] 2
+          [Var] height
+        [Instr] Fend(Equals)
+          [Var] volume
+          [Instr] Fend(Mul)
+            [Instr] Fend(Mul)
+              [Const] PI
+              [Instr] Fend(Pow)
+                [Var] radius
+                [Value] 2
+            [Var] height
+    Line 4:
+      [Container 84] 
+        [Instr] Fend(To)
+          [Var] volume
+          [Var] liters
+        [Instr] Fend(Equals)
+          [Instr] Fend(To)
+            [Var] volume
+            [Var] liters
+    Line 5:
+      [Container 90] 
+        [Instr] Fend(Mul)
+          [Value] 0xff
+          [Var] Hz
+        [Instr] Fend(Mul)
+          [Value] 0b1000
+          [Var] Hz
+        [Instr] Fend(Add)
+          [Instr] Fend(Mul)
+            [Value] 0xff
+            [Var] Hz
+          [Instr] Fend(Mul)
+            [Value] 0b1000
+            [Var] Hz
+        [Instr] Fend(Equals)
+          [Var] base_freq
+          [Instr] Fend(Add)
+            [Instr] Fend(Mul)
+              [Value] 0xff
+              [Var] Hz
+            [Instr] Fend(Mul)
+              [Value] 0b1000
+              [Var] Hz
+    Line 6:
+      [Container 96] 
+        [Instr] Fend(Mul)
+          [Value] 2
+          [Var] M
+        [Instr] Fend(Mul)
+          [Var] base_freq
+          [Instr] Fend(Mul)
+            [Value] 2
+            [Var] M
+        [Instr] Fend(Equals)
+          [Var] clock_speed
+          [Instr] Fend(Mul)
+            [Var] base_freq
+            [Instr] Fend(Mul)
+              [Value] 2
+              [Var] M
+    Line 7:
+      [Container 99] 
+        [Instr] Fend(Equals)
+          [Var] clock_speed
+    Line 8:
+      [Container 107] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] kg
+        [Instr] Fend(Mul)
+          [Value] 10
+          [Var] m
+        [Instr] Fend(Add)
+          [Instr] Fend(Mul)
+            [Value] 5
+            [Var] kg
+          [Instr] Fend(Mul)
+            [Value] 10
+            [Var] m
+        [Instr] Fend(Equals)
+          [Var] bad_mix
+          [Instr] Fend(Add)
+            [Instr] Fend(Mul)
+              [Value] 5
+              [Var] kg
+            [Instr] Fend(Mul)
+              [Value] 10
+              [Var] m
+    Line 9:
+      [Container 111] 
+        [Instr] Fend(Mul)
+          [Var] bad_mix
+          [Value] 2
+        [Instr] Fend(Equals)
+          [Var] dependent_poison
+          [Instr] Fend(Mul)
+            [Var] bad_mix
+            [Value] 2
+    Line 10:
+      [Container 115] 
+        [Instr] Fend(Add)
+          [Value] 42
+          [Value] 8
+        [Instr] Fend(Equals)
+          [Var] recovery
+          [Instr] Fend(Add)
+            [Value] 42
+            [Value] 8
+    Line 11:
+      [Container 118] 
+        [Instr] Fend(Equals)
+          [Var] recovery
+    Line 12:
+      [Container 123] 
+        [Instr] Fend(Mul)
+          [Value] 10
+          [Value] 5
+        [Instr] Fend(Add)
+          [Var] stray_math
+          [Instr] Fend(Mul)
+            [Value] 10
+            [Value] 5
+        [Instr] Fend(Equals)
+          [Instr] Fend(Add)
+            [Var] stray_math
+            [Instr] Fend(Mul)
+              [Value] 10
+              [Value] 5
+    Line 13:
+      [Container 136] 
+        [Instr] Fend(Div)
+          [Value] 100
+          [Value] 2
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] k
+        [Instr] Fend(Mul)
+          [Value] 2
+          [Var] k
+        [Instr] Fend(Add)
+          [Instr] Fend(Mul)
+            [Value] 5
+            [Var] k
+          [Instr] Fend(Mul)
+            [Value] 2
+            [Var] k
+        [Instr] Fend(Equals)
+          [Var] another_recovery
+          [Instr] Fend(Add)
+            [Instr] Fend(Mul)
+              [Value] 5
+              [Var] k
+            [Instr] Fend(Mul)
+              [Value] 2
+              [Var] k
+        [Instr] Fend(Equals)
+          [Instr] Fend(Div)
+            [Value] 100
+            [Value] 2
+          [Instr] Fend(Equals)
+            [Var] another_recovery
+            [Instr] Fend(Add)
+              [Instr] Fend(Mul)
+                [Value] 5
+                [Var] k
+              [Instr] Fend(Mul)
+                [Value] 2
+                [Var] k
+        [Instr] Comma
+          [Var] missing_close
+          [Instr] Fend(Equals)
+            [Instr] Fend(Div)
+              [Value] 100
+              [Value] 2
+            [Instr] Fend(Equals)
+              [Var] another_recovery
+              [Instr] Fend(Add)
+                [Instr] Fend(Mul)
+                  [Value] 5
+                  [Var] k
+                [Instr] Fend(Mul)
+                  [Value] 2
+                  [Var] k
+        [Instr] Fend(Equals)
+          [Instr] Comma
+            [Var] missing_close
+            [Instr] Fend(Equals)
+              [Instr] Fend(Div)
+                [Value] 100
+                [Value] 2
+              [Instr] Fend(Equals)
+                [Var] another_recovery
+                [Instr] Fend(Add)
+                  [Instr] Fend(Mul)
+                    [Value] 5
+                    [Var] k
+                  [Instr] Fend(Mul)
+                    [Value] 2
+                    [Var] k
+}
+
+  Edits:
+    - Insert ' approx. 15.7079632679 liters' at offset 124
+    - Insert ' 0x1f5a1f80 Hz' at offset 251
+    - Insert ' 50' at offset 418
