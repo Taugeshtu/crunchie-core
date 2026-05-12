@@ -208,3 +208,57 @@ fn test_unclosed_container() {
     assert!(container.corrupted);
     assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::UnclosedContainer)));
 }
+
+#[test]
+fn test_illegal_math_pipeline() {
+    let cases = [
+        // Operator Spam & Dangling Operators
+        ("5 + + 3", true),
+        ("* 5", true),
+        ("10 /", true),
+        ("1 to", true),
+        ("to cm", true),
+        // The Phantom Menace (Empty sequences that multiply into nothing)
+        ("()()", true),
+        // Stray Symbols (Values with no operator between them)
+        ("5 5 5", true),
+        // Multiple query / assignment chains (Fails structurally because we lack LHS expressions in some of these cases)
+        ("x = = 5", false), // Structurally parses as Assignment to a Query result! Executioner will reject.
+        ("x = y = 5", false), // Currently this unrolls to two assignments successfully! The engine will catch the execution error.
+        // Distiller Lexical Nightmares
+        ("1.5.5", true),
+        ("10e-", true),
+        ("0b102", true),
+        ("0xG", true),
+        // Unclosed structural failures (Janitor/Parser handled, but should be poisoned or flagged)
+        ("(5", true), 
+        // Dimension / Type mismatches (Unroller fails missing RHS for `to`)
+        ("1m + 2s to", true),
+    ];
+
+    let builtins = builtins::generate_symbol_map();
+    let config = config::Config::default();
+    let constants = config.constants.keys().map(|s| s.as_str());
+
+    for (input, expect_poison) in cases {
+        let mut workspace = parse(input, &builtins, constants.clone());
+        distiller(&mut workspace);
+        janitor(&mut workspace);
+        unroller(&mut workspace);
+        
+        let has_poison = workspace.atoms.values().any(|a| matches!(a, model::Atom::Poison));
+        
+        // Wait, for `(5`, the container is corrupted, but it might not be strictly `Poison` atom yet 
+        // since the unroller might just fail to process corrupted containers, or leave them.
+        // Actually, if it's UnclosedContainer, the diagnostic is there.
+        // Let's check either Poison atom OR Diagnostics with UnclosedContainer.
+        let has_fatal_error = has_poison || workspace.diagnostics.iter().any(|d| {
+            matches!(d.code, model::DiagnosticCode::UnclosedContainer | model::DiagnosticCode::StrayCloser)
+        });
+
+        assert_eq!(
+            has_fatal_error, expect_poison, 
+            "Expected fatal/poison = {} for input {:?}", expect_poison, input
+        );
+    }
+}

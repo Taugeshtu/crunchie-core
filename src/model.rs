@@ -23,6 +23,7 @@ pub enum DiagnosticCode {
     IllegalCharacter,
     StraySequence,
     MalformedSymbol,
+    MalformedExpression,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

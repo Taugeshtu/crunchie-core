@@ -12,30 +12,57 @@ pub fn unroll(workspace: &mut Workspace) {
             let rpn = get_rpn(workspace, cid, entity.offset);
             let mut tape = Vec::new();
             
-            if let Some(final_id) = generate_tape(workspace, rpn, &mut tape) {
-                let tape_id = workspace.next_id;
-                workspace.next_id += 1;
-                
-                let mut tape_entities = Vec::new();
-                
-                if tape.is_empty() {
-                    // No instructions were minted (e.g. single value/variable), 
-                    // so we just put the final operand ID into the tape.
-                    tape_entities.push(Entity { id: final_id, offset: entity.offset });
-                } else {
-                    for instr_id in tape {
-                        tape_entities.push(Entity { id: instr_id, offset: entity.offset });
+            match generate_tape(workspace, rpn, &mut tape) {
+                Ok(Some(final_id)) => {
+                    let tape_id = workspace.next_id;
+                    workspace.next_id += 1;
+                    
+                    let mut tape_entities = Vec::new();
+                    
+                    if tape.is_empty() {
+                        tape_entities.push(Entity { id: final_id, offset: entity.offset });
+                    } else {
+                        for instr_id in tape {
+                            tape_entities.push(Entity { id: instr_id, offset: entity.offset });
+                        }
                     }
+                    
+                    let start_pos = workspace.containers.get(&cid).map(|c| c.start_pos).unwrap_or_default();
+                    workspace.containers.insert(tape_id, Container {
+                        contents: tape_entities,
+                        corrupted: false,
+                        start_pos,
+                    });
+                    
+                    workspace.atoms.insert(entity.id, Atom::Container(tape_id));
                 }
-                
-                let start_pos = workspace.containers.get(&cid).map(|c| c.start_pos).unwrap_or_default();
-                workspace.containers.insert(tape_id, Container {
-                    contents: tape_entities,
-                    corrupted: false,
-                    start_pos,
-                });
-                
-                workspace.atoms.insert(entity.id, Atom::Container(tape_id));
+                Ok(None) => {
+                    // Empty container, valid but nothing to unroll.
+                }
+                Err(err_offset) => {
+                    let poison_id = workspace.get_or_intern_atom_typed(Atom::Poison);
+                    
+                    let tape_id = workspace.next_id;
+                    workspace.next_id += 1;
+                    
+                    let start_pos = workspace.containers.get(&cid).map(|c| c.start_pos).unwrap_or_default();
+                    
+                    workspace.containers.insert(tape_id, Container {
+                        contents: vec![Entity { id: poison_id, offset: err_offset }],
+                        corrupted: true,
+                        start_pos,
+                    });
+                    
+                    workspace.atoms.insert(entity.id, Atom::Container(tape_id));
+                    
+                    workspace.diagnostics.push(crate::model::Diagnostic {
+                        code: crate::model::DiagnosticCode::MalformedExpression,
+                        span: crate::model::Span {
+                            start: crate::model::Position { offset: err_offset, line: 0, col: 0 },
+                            end: crate::model::Position { offset: err_offset, line: 0, col: 0 },
+                        },
+                    });
+                }
             }
         }
     }
@@ -184,7 +211,7 @@ fn process_operator(
     operator_stack.push(Entity { id: op_id, offset });
 }
 
-fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32>) -> Option<i32> {
+fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32>) -> Result<Option<i32>, u32> {
     let mut value_stack = Vec::new();
     
     for entity in rpn {
@@ -220,7 +247,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                             value_stack.push(instr_id);
                         }
                         _ => {
-                            // Malformed
+                            return Err(entity.offset);
                         }
                     }
                 } else {
@@ -234,7 +261,7 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                         tape.push(instr_id);
                         value_stack.push(instr_id);
                     } else {
-                        // Malformed
+                        return Err(entity.offset);
                     }
                 }
             }
@@ -246,6 +273,8 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
                     workspace.atoms.insert(instr_id, Atom::Instruction { op: OpCode::Call, args: vec![entity.id, a] });
                     tape.push(instr_id);
                     value_stack.push(instr_id);
+                } else {
+                    return Err(entity.offset);
                 }
             }
             _ => {
@@ -253,5 +282,13 @@ fn generate_tape(workspace: &mut Workspace, rpn: Vec<Entity>, tape: &mut Vec<i32
             }
         }
     }
-    value_stack.pop()
+    
+    if value_stack.len() > 1 {
+        // If there's more than one value left on the stack, the expression is malformed
+        // (e.g. "5 5 5" where operator injection failed or something else left extra operands)
+        // We'll use a generic offset of 0 if we can't pinpoint it, or the last entity's offset.
+        return Err(0);
+    }
+    
+    Ok(value_stack.pop())
 }
