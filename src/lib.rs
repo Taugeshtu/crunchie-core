@@ -12,7 +12,7 @@ use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
 use std::collections::HashMap;
 
-/// Stage 1: Structural Extraction
+/// Stage 0: Structural Extraction (Parser)
 /// Performs the One-Pass Sweep. Returns a structural tree.
 pub fn parse<'a>(
     text: &str,
@@ -22,19 +22,19 @@ pub fn parse<'a>(
     parser::sweep(text, builtins, constants)
 }
 
-/// Stage 2.1: The Distiller
+/// Stage 1: The Distiller
 /// Assigns roles to atoms and marries values to their units.
 pub fn distiller(workspace: &mut Workspace) {
     distiller::distill(workspace);
 }
 
-/// Stage 2.2: The Janitor
+/// Stage 2: The Janitor
 /// Scrubs the raw structural soup for mathematical sanity.
 pub fn janitor(workspace: &mut Workspace) {
     janitor::scrub(workspace);
 }
 
-/// Stage 2.3: The Unroller
+/// Stage 3: The Unroller
 /// Flattens the nested hierarchy into a linear "Tape" of instructions.
 pub fn unroller(workspace: &mut Workspace) {
     unroller::unroll(workspace);
@@ -47,7 +47,7 @@ pub fn executioner(workspace: &mut Workspace, config: &Config) -> EngineResult {
     exec.execute()
 }
 
-/// Stage 2: Semantic Analysis & Evaluation
+/// Semantic Analysis & Evaluation
 /// Processes the Workspace, evaluates the math, and finds errors.
 pub fn evaluate(_text: &str, workspace: &mut Workspace, config: &Config) -> EngineResult {
     distiller(workspace);
@@ -56,7 +56,7 @@ pub fn evaluate(_text: &str, workspace: &mut Workspace, config: &Config) -> Engi
     executioner(workspace, config)
 }
 
-/// Stage 3: Utility for applying fills
+/// Utility for applying fills
 /// Applies text edits (insertions, replacements) to the original text.
 pub fn apply_edits(_text: &str, _edits: &[TextEdit]) -> String {
     unimplemented!("Applying edits not yet implemented")

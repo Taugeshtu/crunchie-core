@@ -48,14 +48,14 @@ Crunchie-core is a pure, portable library that uses a progressive, linear pipeli
 
 More in-depth docs which are driving the source:
 1. **[Parser (Stage 0)](./docs/implementation/Stage0_Parser.md)**: A "brainless" sweep turning raw text into a structural topology.
-2. **[Janitor (Stage 1)](./docs/implementation/Stage1_Janitor.md)**: Scrubs the topological soup, breaks lines, normalizes sequences.
-3. **[Distiller (Stage 2)](./docs/implementation/Stage2_Distiller.md)**: The semantic bridge; uses the "Number Muncher" to parse units, multipliers, and numbers.
+2. **[Distiller (Stage 1)](./docs/implementation/Stage1_Distiller.md)**: The semantic bridge; uses the "Number Muncher" to parse units, multipliers, and numbers.
+3. **[Janitor (Stage 2)](./docs/implementation/Stage2_Janitor.md)**: Scrubs the topological soup, breaks lines, normalizes sequences.
 4. **[Unroller (Stage 3)](./docs/implementation/Stage3_Unroller.md)**: Flattens the hierarchy into a linear tape of instructions using the Shunting-Yard algorithm.
 5. **[Executioner (Stage 4)](./docs/implementation/Stage4_Executioner.md)**: The final pass that talks to the Fend-core arithmetic engine to solve the tape.
 
 ## Usage
 
-Crunchie-core doesn't know about the disk or the OS. It only knows about the buffer you give it.
+Crunchie-core doesn't know about the disk or the OS. It only knows about the buffer you give it. See the **[API Reference](./docs/API.md)** for more details.
 
 ```rust
 use crunchie_core::config::Config;
