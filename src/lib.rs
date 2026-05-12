@@ -58,8 +58,23 @@ pub fn evaluate(_text: &str, workspace: &mut Workspace, config: &Config) -> Engi
 
 /// Utility for applying fills
 /// Applies text edits (insertions, replacements) to the original text.
-pub fn apply_edits(_text: &str, _edits: &[TextEdit]) -> String {
-    unimplemented!("Applying edits not yet implemented")
+pub fn apply_edits(text: &str, edits: &[TextEdit]) -> String {
+    let mut result = text.to_string();
+    let mut sorted_edits = edits.to_vec();
+    
+    // Sort edits by offset in descending order to avoid shifting issues
+    sorted_edits.sort_by(|a, b| b.span.start.offset.cmp(&a.span.start.offset));
+
+    for edit in sorted_edits {
+        let start = edit.span.start.offset as usize;
+        let end = edit.span.end.offset as usize;
+        
+        if start <= result.len() && end <= result.len() && start <= end {
+            result.replace_range(start..end, &edit.new_text);
+        }
+    }
+
+    result
 }
 
 /// Convenience Wrapper
