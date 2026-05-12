@@ -73,7 +73,7 @@ pub fn sweep<'a>(
     // 1. Initialization
     for (k, v) in builtins {
         state.workspace.intern_map.insert(k.clone(), *v);
-        let sym = if *v >= builtins::CONSTANTS_START_ID {
+        let sym = if *v <= builtins::CONSTANTS_START_ID {
             Atom::Constant(k.clone())
         } else if *v <= builtins::FUNCTIONS_START_ID {
             Atom::Function(k.clone())
@@ -89,12 +89,12 @@ pub fn sweep<'a>(
         state.workspace.atoms.insert(*v, sym);
     }
 
-    let mut current_constant_id = builtins::CONSTANTS_START_ID;
     for c in constants {
         if !state.workspace.intern_map.contains_key(c) {
-            state.workspace.intern_map.insert(c.to_string(), current_constant_id);
-            state.workspace.atoms.insert(current_constant_id, Atom::Constant(c.to_string()));
-            current_constant_id += 1;
+            let id = state.workspace.next_id;
+            state.workspace.next_id += 1;
+            state.workspace.intern_map.insert(c.to_string(), id);
+            state.workspace.atoms.insert(id, Atom::Constant(c.to_string()));
         }
     }
     

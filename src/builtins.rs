@@ -9,8 +9,8 @@ pub const ALPHANUMERIC_OPERATORS: &[&str] = &["to"];
 pub const FUNCTIONS: &[&str] = &["sin", "cos", "tan", "log", "sqrt"];
 pub const ILLEGAL_CHARS: &[char] = &['~', '`', '@', '[', ']', '{', '}', '\\', '|'];
 
-pub const FUNCTIONS_START_ID: i32 = -1_000_000;
-pub const CONSTANTS_START_ID: i32 = 1_000_000;
+pub const FUNCTIONS_START_ID: i32 = -10_000;
+pub const CONSTANTS_START_ID: i32 = -20_000;
 
 pub fn get_operator(s: &str) -> Option<OpCode> {
     match s {
@@ -64,7 +64,7 @@ pub fn generate_symbol_map() -> HashMap<String, i32> {
     let mut const_id = CONSTANTS_START_ID;
     for &c in fend_core::get_builtin_constants() {
         m.insert(c.to_string(), const_id);
-        const_id += 1;
+        const_id -= 1;
     }
 
     m
