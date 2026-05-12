@@ -1,4 +1,4 @@
-use crate::model::{Workspace, Atom, OpCode, FendOp, EngineResult, Diagnostic, DiagnosticCode, TextEdit, Position};
+use crate::model::{Workspace, Atom, OpCode, FendOp, EngineResult, Diagnostic, DiagnosticCode, TextEdit};
 use crate::config::Config;
 use std::collections::{HashMap, HashSet};
 use fend_core::{Context, interrupt::Never, ast::{Expr, Bop, evaluate}};
