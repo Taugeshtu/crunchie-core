@@ -1,0 +1,13 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: 1.2.3
+Workspace {
+  Diagnostics:
+    - MalformedSymbol at offset 0
+  Lines:
+    Line 1:
+      [Container 7] 
+        [POISON]
+}

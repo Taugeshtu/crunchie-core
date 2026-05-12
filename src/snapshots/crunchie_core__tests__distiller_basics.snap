@@ -1,0 +1,102 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: 5
+Workspace {
+  Lines:
+    Line 1:
+      [Container 7] 
+        [Value] 5
+}
+
+---
+Input: x = 5kg
+Workspace {
+  Lines:
+    Line 1:
+      [Container 14] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] kg
+        [Instr] Fend(Equals)
+          [Var] x
+          [Instr] Fend(Mul)
+            [Value] 5
+            [Var] kg
+}
+
+---
+Input: 10cm3
+Workspace {
+  Lines:
+    Line 1:
+      [Container 11] 
+        [Instr] Fend(Mul)
+          [Value] 10
+          [Var] cm3
+}
+
+---
+Input: 0xFF
+Workspace {
+  Lines:
+    Line 1:
+      [Container 7] 
+        [Value] 0xff
+}
+
+---
+Input: 5M
+Workspace {
+  Lines:
+    Line 1:
+      [Container 11] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] M
+}
+
+---
+Input: 5 + 2
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Fend(Add)
+          [Value] 5
+          [Value] 2
+}
+
+---
+Input: sin(PI)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Call
+          [Func] sin
+          [Const] PI
+}
+
+---
+Input: cos(TAU)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Call
+          [Func] cos
+          [Const] TAU
+}
+
+---
+Input: sqrt(E)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Call
+          [Func] sqrt
+          [Const] E
+}

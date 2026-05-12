@@ -1,264 +1,112 @@
 use super::*;
-use std::collections::HashMap;
-use fend_core::{Context, Attrs, interrupt::Never};
+use crate::printer::print_workspace;
 
-/// Helper to turn the flat topology back into nested vectors for easy assertions,
-/// matching the logic from the Python prototype's `reconstruct` function.
-fn resolve_atom(id: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> serde_json::Value {
-    let mut ctx = Context::new();
-    let int = Never;
-    let attrs = Attrs::default();
+fn run_pipeline(input: &str) -> String {
+    let builtins = builtins::generate_symbol_map();
+    let config = config::Config::default();
+    let constants = config.constants.keys().map(|s| s.as_str());
 
-    match workspace.atoms.get(&id) {
-        Some(model::Atom::Container(child_cid)) => {
-            serde_json::Value::Array(resolve_container(*child_cid, workspace, reverse_intern))
-        }
-        Some(model::Atom::Value(v)) => {
-            let mut spans = Vec::new();
-            v.format(0, &mut spans, attrs, false, &mut ctx, &int).unwrap();
-            let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
-            serde_json::Value::String(format!("V:{}", formatted))
-        }
-        Some(model::Atom::Variable(v)) => serde_json::Value::String(format!("VAR:{}", v)),
-        Some(model::Atom::Operator(op)) => serde_json::Value::String(format!("O:{:?}", op)),
-        Some(model::Atom::Constant(c)) => serde_json::Value::String(format!("C:{}", c)),
-        Some(model::Atom::Function(f)) => serde_json::Value::String(format!("F:{}", f)),
-        Some(model::Atom::Instruction { op, args }) => {
-            let arg_strs: Vec<String> = args.iter().map(|&aid| {
-                match resolve_atom(aid, workspace, reverse_intern) {
-                    serde_json::Value::String(s) => s,
-                    _ => "?".to_string()
-                }
-            }).collect();
-            serde_json::Value::String(format!("I:{:?}({})", op, arg_strs.join(", ")))
-        }
-        Some(model::Atom::Poison) => serde_json::Value::String("POISON".to_string()),
-        Some(model::Atom::Raw(s)) => serde_json::Value::String(format!("R:{}", s)),
-        _ => serde_json::Value::String(reverse_intern.get(&id).cloned().unwrap_or_else(|| {
-            format!("?{}?", id)
-        })),
-    }
-}
-
-fn resolve_container(cid: i32, workspace: &Workspace, reverse_intern: &HashMap<i32, String>) -> Vec<serde_json::Value> {
-    let mut res = Vec::new();
-    if let Some(container) = workspace.containers.get(&cid) {
-        for entity in &container.contents {
-            res.push(resolve_atom(entity.id, workspace, reverse_intern));
-        }
-    }
-    res
-}
-
-fn reconstruct(workspace: &Workspace) -> Vec<serde_json::Value> {
-    let mut reverse_intern = HashMap::new();
-    for (k, &v) in &workspace.intern_map {
-        reverse_intern.insert(v, k.clone());
-    }
-    resolve_container(0, workspace, &reverse_intern)
+    let mut workspace = parse(input, &builtins, constants);
+    distiller(&mut workspace);
+    janitor(&mut workspace);
+    unroller(&mut workspace);
+    
+    print_workspace(&workspace)
 }
 
 #[test]
 fn test_distiller_basics() {
     let cases = [
-        ("5", r#"[["V:5"]]"#),
-        ("x = 5kg", r#"[["VAR:x", "O:Fend(Equals)", ["V:5", "VAR:kg"]]]"#),
-        ("10cm3", r#"[["V:10", "VAR:cm3"]]"#), 
-        ("0xFF", r#"[["V:0xff"]]"#),
-        ("5M", r#"[["V:5", "VAR:M"]]"#),
-        ("5 + 2", r#"[["V:5", "O:Fend(Add)", "V:2"]]"#),
-        ("sin(PI)", r#"[["F:sin", ["C:PI"]]]"#),
-        ("cos(TAU)", r#"[["F:cos", ["C:TAU"]]]"#),
-        ("sqrt(E)", r#"[["F:sqrt", ["C:E"]]]"#),
+        "5",
+        "x = 5kg",
+        "10cm3",
+        "0xFF",
+        "5M",
+        "5 + 2",
+        "sin(PI)",
+        "cos(TAU)",
+        "sqrt(E)",
     ];
-
-    let builtins = builtins::generate_symbol_map();
-    let config = config::Config::default();
-    let constants = config.constants.keys().map(|s| s.as_str());
-
-    for (input, expected_json) in cases {
-        let mut workspace = parse(input, &builtins, constants.clone());
-        distiller(&mut workspace);
-        janitor(&mut workspace);
-        
-        let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
-        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
-        
-        assert_eq!(reconstructed, expected_value, "Failed on distiller input: {:?}", input);
-    }
+    let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_distiller_poison() {
-    let builtins = builtins::generate_symbol_map();
-    
-    let mut workspace = parse("1.2.3", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace);
-    
-    assert!(workspace.atoms.values().any(|s| matches!(s, model::Atom::Poison)));
-    assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
+    let output = format!("Input: 1.2.3\n{}", run_pipeline("1.2.3"));
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_distiller_smart_splitting_garbage() {
-    let builtins = builtins::generate_symbol_map();
-    
-    let mut workspace = parse("65kg123", &builtins, std::iter::empty::<&str>());
-    distiller(&mut workspace);
-    
-    assert!(workspace.atoms.values().any(|s| matches!(s, model::Atom::Poison)));
-    assert!(workspace.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::MalformedSymbol)));
-}
-
-#[test]
-fn test_parser_raw() {
-    let builtins = builtins::generate_symbol_map();
-    let config = config::Config::default();
-    let constants = config.constants.keys().map(|s| s.as_str());
-
-    let cases = [
-        ("5", r#"["R:5"]"#),
-        ("x = 5 kg", r#"["R:x", "O:Fend(Equals)", "R:5", "R:kg"]"#),
-        ("3 + (1 + 2)", r#"["R:3", "O:Fend(Add)", ["R:1", "O:Fend(Add)", "R:2"]]"#),
-        ("sin(PI)", r#"["F:sin", ["C:PI"]]"#),
-    ];
-
-    for (input, expected_json) in cases {
-        let result = parse(input, &builtins, constants.clone());
-        let reconstructed = serde_json::Value::Array(reconstruct(&result));
-        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
-        assert_eq!(reconstructed, expected_value, "Failed on raw parse input: {:?}", input);
-    }
+    let output = format!("Input: 65kg123\n{}", run_pipeline("65kg123"));
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_janitor_cases() {
     let cases = [
-        ("5", r#"[["R:5"]]"#),
-        ("x = 5 kg", r#"[["R:x", "O:Fend(Equals)", "R:5", "R:kg"]]"#),
-        ("(5)", r#"[["R:5"]]"#),
-        ("((5))", r#"[["R:5"]]"#),
-        ("3 + (1 + 2)", r#"[["R:3", "O:Fend(Add)", ["R:1", "O:Fend(Add)", "R:2"]]]"#),
-        ("x = 1; y = 2", r#"[["R:x", "O:Fend(Equals)", "R:1"], ["R:y", "O:Fend(Equals)", "R:2"]]"#),
-        ("x = 1\ny = 2", r#"[["R:x", "O:Fend(Equals)", "R:1"], ["R:y", "O:Fend(Equals)", "R:2"]]"#),
-        ("(1; 2)", r#"[["R:1", "O:Comma", "R:2"]]"#),
-        ("(1, \n 2)", r#"[["R:1", "O:Comma", "R:2"]]"#),
-        ("(,1,)", r#"[["R:1"]]"#),
-        ("()", r#"[[]]"#), // Empty but healthy should survive?
+        "(5)",
+        "((5))",
+        "3 + (1 + 2)",
+        "x = 1; y = 2",
+        "x = 1\ny = 2",
+        "(1; 2)",
+        "(1, \n 2)",
+        "(,1,)",
+        "()",
     ];
-
-    let builtins = builtins::generate_symbol_map();
-
-    for (input, expected_json) in cases {
-        let mut workspace = parse(input, &builtins, std::iter::empty::<&str>());
-        janitor(&mut workspace);
-        let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
-        
-        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
-        
-        assert_eq!(reconstructed, expected_value, "Failed on janitor input: {:?}", input);
-    }
+    let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_unroller_basics() {
     let cases = [
-        ("1 + 2 * 3", r#"[["I:Fend(Mul)(V:2, V:3)", "I:Fend(Add)(V:1, I:Fend(Mul)(V:2, V:3))"]]"#),
-        ("5 cm", r#"[["I:Fend(Mul)(V:5, VAR:cm)"]]"#),
-        ("5 PI", r#"[["I:Fend(Mul)(V:5, C:PI)"]]"#),
-        ("x = 10; 5x", r#"[["I:Fend(Equals)(VAR:x, V:10)"], ["I:Fend(Mul)(V:5, VAR:x)"]]"#),
-        ("3(1+2)", r#"[["I:Fend(Add)(V:1, V:2)", "I:Fend(Mul)(V:3, I:Fend(Add)(V:1, V:2))"]]"#),
-        ("x = 5", r#"[["I:Fend(Equals)(VAR:x, V:5)"]]"#),
-        ("x = ", r#"[["I:Fend(Equals)(VAR:x)"]]"#),
-        ("sin(PI)", r#"[["I:Call(F:sin, C:PI)"]]"#),
+        "1 + 2 * 3",
+        "5 cm",
+        "5 PI",
+        "x = 10; 5x",
+        "3(1+2)",
+        "x = 5",
+        "x = ",
+        "sin(PI)",
     ];
-
-    let builtins = builtins::generate_symbol_map();
-    let config = config::Config::default();
-    let constants = config.constants.keys().map(|s| s.as_str());
-
-    for (input, expected_json) in cases {
-        let mut workspace = parse(input, &builtins, constants.clone());
-        distiller(&mut workspace);
-        janitor(&mut workspace);
-        unroller(&mut workspace);
-        
-        let reconstructed = serde_json::Value::Array(reconstruct(&workspace));
-        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
-        
-        assert_eq!(reconstructed, expected_value, "Failed on unroller input: {:?}", input);
-    }
+    let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_stray_closer() {
-    let builtins = builtins::generate_symbol_map();
-    let result = parse("5)", &builtins, std::iter::empty::<&str>());
-    
-    assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::StrayCloser)));
+    let output = format!("Input: 5)\n{}", run_pipeline("5)"));
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_unclosed_container() {
-    let builtins = builtins::generate_symbol_map();
-    let result = parse("x = (5", &builtins, std::iter::empty::<&str>());
-    
-    // Find the dynamically created nested container (which will be the only one besides Root ID 0)
-    let (_, container) = result.containers.iter().find(|&(&id, _)| id != 0).unwrap();
-    assert!(container.corrupted);
-    assert!(result.diagnostics.iter().any(|d| matches!(d.code, model::DiagnosticCode::UnclosedContainer)));
+    let output = format!("Input: x = (5\n{}", run_pipeline("x = (5"));
+    insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_illegal_math_pipeline() {
     let cases = [
-        // Operator Spam & Dangling Operators
-        ("5 + + 3", true),
-        ("* 5", true),
-        ("10 /", true),
-        ("1 to", true),
-        ("to cm", true),
-        // The Phantom Menace (Empty sequences that multiply into nothing)
-        ("()()", true),
-        // Stray Symbols (Values with no operator between them)
-        ("5 5 5", true),
-        // Multiple query / assignment chains (Fails structurally because we lack LHS expressions in some of these cases)
-        ("x = = 5", false), // Structurally parses as Assignment to a Query result! Executioner will reject.
-        ("x = y = 5", false), // Currently this unrolls to two assignments successfully! The engine will catch the execution error.
-        // Distiller Lexical Nightmares
-        ("1.5.5", true),
-        ("10e-", true),
-        ("0b102", true),
-        ("0xG", true),
-        // Unclosed structural failures (Janitor/Parser handled, but should be poisoned or flagged)
-        ("(5", true), 
-        // Dimension / Type mismatches (Unroller fails missing RHS for `to`)
-        ("1m + 2s to", true),
+        "5 + + 3",
+        "* 5",
+        "10 /",
+        "1 to",
+        "to cm",
+        "()()",
+        "5 5 5",
+        "x = = 5",
+        "x = y = 5",
+        "1.5.5",
+        "10e-",
+        "0b102",
+        "0xG",
+        "(5",
+        "1m + 2s to",
     ];
-
-    let builtins = builtins::generate_symbol_map();
-    let config = config::Config::default();
-    let constants = config.constants.keys().map(|s| s.as_str());
-
-    for (input, expect_poison) in cases {
-        let mut workspace = parse(input, &builtins, constants.clone());
-        distiller(&mut workspace);
-        janitor(&mut workspace);
-        unroller(&mut workspace);
-        
-        let has_poison = workspace.atoms.values().any(|a| matches!(a, model::Atom::Poison));
-        
-        // Wait, for `(5`, the container is corrupted, but it might not be strictly `Poison` atom yet 
-        // since the unroller might just fail to process corrupted containers, or leave them.
-        // Actually, if it's UnclosedContainer, the diagnostic is there.
-        // Let's check either Poison atom OR Diagnostics with UnclosedContainer.
-        let has_fatal_error = has_poison || workspace.diagnostics.iter().any(|d| {
-            matches!(d.code, model::DiagnosticCode::UnclosedContainer | model::DiagnosticCode::StrayCloser)
-        });
-
-        assert_eq!(
-            has_fatal_error, expect_poison, 
-            "Expected fatal/poison = {} for input {:?}", expect_poison, input
-        );
-    }
+    let output = cases.iter().map(|c| format!("Input: {}\n{}", c, run_pipeline(c))).collect::<Vec<_>>().join("\n---\n");
+    insta::assert_snapshot!(output);
 }

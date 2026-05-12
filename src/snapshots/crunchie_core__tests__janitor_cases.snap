@@ -1,0 +1,114 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: (5)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 8] 
+        [Value] 5
+}
+
+---
+Input: ((5))
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Value] 5
+}
+
+---
+Input: 3 + (1 + 2)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 13] 
+        [Instr] Fend(Add)
+          [Value] 1
+          [Value] 2
+        [Instr] Fend(Add)
+          [Value] 3
+          [Instr] Fend(Add)
+            [Value] 1
+            [Value] 2
+}
+
+---
+Input: x = 1; y = 2
+Workspace {
+  Lines:
+    Line 1:
+      [Container 12] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 1
+    Line 2:
+      [Container 15] 
+        [Instr] Fend(Equals)
+          [Var] y
+          [Value] 2
+}
+
+---
+Input: x = 1
+y = 2
+Workspace {
+  Lines:
+    Line 1:
+      [Container 12] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 1
+    Line 2:
+      [Container 15] 
+        [Instr] Fend(Equals)
+          [Var] y
+          [Value] 2
+}
+
+---
+Input: (1; 2)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 10] 
+        [Instr] Comma
+          [Value] 1
+          [Value] 2
+}
+
+---
+Input: (1, 
+ 2)
+Workspace {
+  Diagnostics:
+    - StraySequence at offset 4
+  Lines:
+    Line 1:
+      [Container 10] 
+        [Instr] Comma
+          [Value] 1
+          [Value] 2
+}
+
+---
+Input: (,1,)
+Workspace {
+  Diagnostics:
+    - StraySequence at offset 1
+    - StraySequence at offset 3
+  Lines:
+    Line 1:
+      [Container 8] 
+        [Value] 1
+}
+
+---
+Input: ()
+Workspace {
+  Lines:
+    Line 1:
+      [Container 5] (empty)
+}

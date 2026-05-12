@@ -1,0 +1,175 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: 5 + + 3
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 2
+  Lines:
+    Line 1:
+      [Container 9] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: * 5
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 0
+  Lines:
+    Line 1:
+      [Container 8] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: 10 /
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 3
+  Lines:
+    Line 1:
+      [Container 8] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: 1 to
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 2
+  Lines:
+    Line 1:
+      [Container 8] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: to cm
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 0
+  Lines:
+    Line 1:
+      [Container 8] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: ()()
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 2
+  Lines:
+    Line 1:
+      [Container 11] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: 5 5 5
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 0
+  Lines:
+    Line 1:
+      [Container 8] (CORRUPTED) 
+        [POISON]
+}
+
+---
+Input: x = = 5
+Workspace {
+  Lines:
+    Line 1:
+      [Container 10] 
+        [Instr] Fend(Equals)
+          [Var] x
+        [Instr] Fend(Equals)
+          [Instr] Fend(Equals)
+            [Var] x
+          [Value] 5
+}
+
+---
+Input: x = y = 5
+Workspace {
+  Lines:
+    Line 1:
+      [Container 11] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Var] y
+        [Instr] Fend(Equals)
+          [Instr] Fend(Equals)
+            [Var] x
+            [Var] y
+          [Value] 5
+}
+
+---
+Input: 1.5.5
+Workspace {
+  Diagnostics:
+    - MalformedSymbol at offset 0
+  Lines:
+    Line 1:
+      [Container 7] 
+        [POISON]
+}
+
+---
+Input: 10e-
+Workspace {
+  Diagnostics:
+    - MalformedSymbol at offset 0
+  Lines:
+    Line 1:
+      [Container 7] 
+        [POISON]
+}
+
+---
+Input: 0b102
+Workspace {
+  Diagnostics:
+    - MalformedSymbol at offset 0
+  Lines:
+    Line 1:
+      [Container 7] 
+        [POISON]
+}
+
+---
+Input: 0xG
+Workspace {
+  Diagnostics:
+    - MalformedSymbol at offset 0
+  Lines:
+    Line 1:
+      [Container 7] 
+        [POISON]
+}
+
+---
+Input: (5
+Workspace {
+  Diagnostics:
+    - UnclosedContainer at offset 0
+  Lines:
+    Line 1:
+      [Container 8] 
+        [Value] 5
+}
+
+---
+Input: 1m + 2s to
+Workspace {
+  Diagnostics:
+    - MalformedExpression at offset 8
+  Lines:
+    Line 1:
+      [Container 20] (CORRUPTED) 
+        [POISON]
+}

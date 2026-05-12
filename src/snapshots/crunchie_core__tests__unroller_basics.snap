@@ -1,0 +1,104 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: 1 + 2 * 3
+Workspace {
+  Lines:
+    Line 1:
+      [Container 11] 
+        [Instr] Fend(Mul)
+          [Value] 2
+          [Value] 3
+        [Instr] Fend(Add)
+          [Value] 1
+          [Instr] Fend(Mul)
+            [Value] 2
+            [Value] 3
+}
+
+---
+Input: 5 cm
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] cm
+}
+
+---
+Input: 5 PI
+Workspace {
+  Lines:
+    Line 1:
+      [Container 8] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Const] PI
+}
+
+---
+Input: x = 10; 5x
+Workspace {
+  Lines:
+    Line 1:
+      [Container 13] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 10
+    Line 2:
+      [Container 16] 
+        [Instr] Fend(Mul)
+          [Value] 5
+          [Var] x
+}
+
+---
+Input: 3(1+2)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 13] 
+        [Instr] Fend(Add)
+          [Value] 1
+          [Value] 2
+        [Instr] Fend(Mul)
+          [Value] 3
+          [Instr] Fend(Add)
+            [Value] 1
+            [Value] 2
+}
+
+---
+Input: x = 5
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 5
+}
+
+---
+Input: x = 
+Workspace {
+  Lines:
+    Line 1:
+      [Container 8] 
+        [Instr] Fend(Equals)
+          [Var] x
+}
+
+---
+Input: sin(PI)
+Workspace {
+  Lines:
+    Line 1:
+      [Container 9] 
+        [Instr] Call
+          [Func] sin
+          [Const] PI
+}

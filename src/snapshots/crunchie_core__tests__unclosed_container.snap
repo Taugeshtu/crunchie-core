@@ -1,0 +1,15 @@
+---
+source: src/tests.rs
+expression: output
+---
+Input: x = (5
+Workspace {
+  Diagnostics:
+    - UnclosedContainer at offset 0
+  Lines:
+    Line 1:
+      [Container 11] 
+        [Instr] Fend(Equals)
+          [Var] x
+          [Value] 5
+}

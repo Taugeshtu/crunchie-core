@@ -6,6 +6,7 @@ pub mod janitor;
 pub mod distiller;
 pub mod unroller;
 pub mod engine;
+pub mod printer;
 
 use config::Config;
 use model::{EngineResult, TextEdit, Workspace};
