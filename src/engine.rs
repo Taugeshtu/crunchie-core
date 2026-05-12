@@ -150,10 +150,11 @@ impl<'a> Executioner<'a> {
                     spans.clear();
                     if v.format(0, &mut spans, attrs, false, &mut self.ctx, &int).is_ok() {
                         let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
+                        let insert_offset = offset + 1; // Insert after the '='
                         self.edits.push(TextEdit {
                             span: crate::model::Span {
-                                start: Position { offset, line: 0, col: 0 },
-                                end: Position { offset, line: 0, col: 0 },
+                                start: Position { offset: insert_offset, line: 0, col: 0 },
+                                end: Position { offset: insert_offset, line: 0, col: 0 },
                             },
                             new_text: format!(" {}", formatted),
                         });

@@ -1,4 +1,4 @@
-use crate::model::{Workspace, Atom, Entity, Container};
+use crate::model::{Workspace, Atom, Entity};
 use std::collections::HashMap;
 
 /// Prints the workspace topology in a human-readable format.
