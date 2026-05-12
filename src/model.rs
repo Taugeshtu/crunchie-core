@@ -32,13 +32,35 @@ pub struct Diagnostic {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextEdit {
     pub span: Span,
     pub new_text: String,
+    #[serde(skip)]
+    pub value: Option<fend_core::value::Value>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+impl PartialEq for TextEdit {
+    fn eq(&self, other: &Self) -> bool {
+        if self.span != other.span || self.new_text != other.new_text {
+            return false;
+        }
+        match (&self.value, &other.value) {
+            (Some(a), Some(b)) => {
+                let mut ctx = fend_core::Context::new();
+                let int = fend_core::interrupt::Never;
+                match a.compare(b, &mut ctx, &int) {
+                    Ok(Some(std::cmp::Ordering::Equal)) => true,
+                    _ => false,
+                }
+            }
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EngineResult {
     pub diagnostics: Vec<Diagnostic>,
     pub edits: Vec<TextEdit>,
@@ -139,6 +161,23 @@ impl Workspace {
                 id
             }
         }
+    }
+
+    pub fn get_position(&self, offset: u32, text: &str) -> Position {
+        let mut line = 0;
+        let mut col = 0;
+        for (i, c) in text.char_indices() {
+            if i as u32 >= offset {
+                break;
+            }
+            if c == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        Position { offset, line, col }
     }
 }
 

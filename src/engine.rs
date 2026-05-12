@@ -9,6 +9,7 @@ use fend_core::eval::Attrs;
 pub struct Executioner<'a> {
     pub workspace: &'a Workspace,
     pub config: &'a Config,
+    pub text: &'a str,
     pub ctx: Context,
     pub state_map: HashMap<i32, Value>,
     pub poison_set: HashSet<i32>,
@@ -17,10 +18,11 @@ pub struct Executioner<'a> {
 }
 
 impl<'a> Executioner<'a> {
-    pub fn new(workspace: &'a Workspace, config: &'a Config) -> Self {
+    pub fn new(workspace: &'a Workspace, config: &'a Config, text: &'a str) -> Self {
         Self {
             workspace,
             config,
+            text,
             ctx: Context::new(),
             state_map: HashMap::new(),
             poison_set: HashSet::new(),
@@ -112,11 +114,12 @@ impl<'a> Executioner<'a> {
                                     }
                                     Err(_) => {
                                         self.poison_set.insert(child.id);
+                                        let pos = self.workspace.get_position(child.offset, self.text);
                                         self.diagnostics.push(Diagnostic {
                                             code: DiagnosticCode::MalformedExpression, // Or a new EvaluationError
                                             span: crate::model::Span {
-                                                start: Position { offset: child.offset, line: 0, col: 0 },
-                                                end: Position { offset: child.offset, line: 0, col: 0 },
+                                                start: pos,
+                                                end: pos,
                                             },
                                         });
                                     }
@@ -151,12 +154,14 @@ impl<'a> Executioner<'a> {
                     if v.format(0, &mut spans, attrs, false, &mut self.ctx, &int).is_ok() {
                         let formatted: String = spans.iter().map(|s| s.string.clone()).collect();
                         let insert_offset = offset + 1; // Insert after the '='
+                        let pos = self.workspace.get_position(insert_offset, self.text);
                         self.edits.push(TextEdit {
                             span: crate::model::Span {
-                                start: Position { offset: insert_offset, line: 0, col: 0 },
-                                end: Position { offset: insert_offset, line: 0, col: 0 },
+                                start: pos,
+                                end: pos,
                             },
                             new_text: format!(" {}", formatted),
+                            value: Some(v),
                         });
                     }
                 } else {
@@ -197,11 +202,12 @@ impl<'a> Executioner<'a> {
                         Ok(Value::Bool(true)) => { /* pass */ },
                         _ => {
                             self.poison_set.insert(id);
+                            let pos = self.workspace.get_position(offset, self.text);
                             self.diagnostics.push(Diagnostic {
                                 code: DiagnosticCode::MalformedExpression, // Or AssertionFailed
                                 span: crate::model::Span {
-                                    start: Position { offset, line: 0, col: 0 },
-                                    end: Position { offset, line: 0, col: 0 },
+                                    start: pos,
+                                    end: pos,
                                 },
                             });
                         }
