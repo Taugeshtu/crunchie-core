@@ -34,10 +34,13 @@ impl ParserState {
     }
 
     /// Allocates a new container and returns its ID
-    fn create_container(&mut self) -> i32 {
+    fn create_container(&mut self, start_pos: Position) -> i32 {
         let id = self.workspace.next_id;
         self.workspace.next_id += 1;
-        self.workspace.containers.insert(id, Container::default());
+        self.workspace.containers.insert(id, Container {
+            start_pos,
+            ..Default::default()
+        });
         self.workspace.atoms.insert(id, Atom::Container(id));
         id
     }
@@ -157,7 +160,7 @@ pub fn sweep<'a>(
         match char {
             '(' => {
                 state.flush_sym();
-                let new_cid = state.create_container();
+                let new_cid = state.create_container(current_pos);
                 state.push_entity(Entity { id: new_cid, offset });
                 state.stack.push(new_cid);
             }
