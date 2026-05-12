@@ -4,7 +4,7 @@ Crunchie is a small DSL for everyday light arithmetic, in a text buffer, as a li
 
 ## Why?
 
-Because it's never _just_ "pi times five". It's area in `cm2` and length in meters; and there's an array of these things, and they are 20% air and 80% aluminium, and you need the total mass. And sometimes you need to noodle around the parameters so the solution fits better.
+Because it's never _just_ "pi times five". It's `area in cm2` and `length in meters`; and there's a 3x5 array of these things, and they are 20% air and 80% aluminium, and you need the total mass. And sometimes you need to noodle around the parameters so the solution fits better.
 
 Capability niche: **python/spreadsheet** > _**Crunchie**_ > **calculator app**
 
@@ -16,7 +16,7 @@ Crunchie provides:
 - **Gradual capability**: from just linting symbols and parentheses, through validating equations and calculating solutions, to a completely filled & annotated buffer. Use as much or as little of the pipeline as you want, hack into it
 - **Poisoning**: If Line 1 is a syntax error, Line 1 is "Poisoned," but Line 2 keeps working. Independent math stays alive.
 
-_More details in the **[Vision doc](./docs/Vision.md)**._
+_More details in the **[Vision doc](./docs/Vision.md)**. And also I just fancied writing a parser._
 
 ## The DSL: A Conversation with a Buffer
 
