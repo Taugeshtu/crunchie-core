@@ -4,16 +4,19 @@ Crunchie is a small DSL for everyday light arithmetic, in a text buffer, as a li
 
 ## Why?
 
-Because it's never _just_ "PI times five". You'll need more than one step of calculation. You need context, comments, variables. Crunchie turns any text buffer into a strict, physically-aware scratchpad where math happens as you think and type.
-Power: python/spreadsheet > _Crunchie_ > calculator app
+Because it's never _just_ "pi times five". It's area in `cm2` and length in meters; and there's an array of these things, and they are 20% air and 80% aluminium, and you need the total mass. And sometimes you need to noodle around the parameters so the solution fits better.
 
-While engines like **Fend** or **Numbat** are brilliant at solving single expressions with complex units, they are often stateless or fragile when it comes to managing a full buffer of interdependent math.
+Capability niche: **python/spreadsheet** > _**Crunchie**_ > **calculator app**
+
+"Math in rust" niche:
+- just a bit more "language" than [Fend](https://github.com/printfn/fend)
+- a fair bit less "language" than [Numbat](https://github.com/sharkdp/numbat)
 
 Crunchie provides:
-- **Persistence allowance**: your app can just keep a buffer around, Crunchie will only emit diagnostics and suggested edits if you want them
+- **Gradual capability**: from just linting symbols and parentheses, through validating equations and calculating solutions, to a completely filled & annotated buffer. Use as much or as little of the pipeline as you want, hack into it
 - **Poisoning**: If Line 1 is a syntax error, Line 1 is "Poisoned," but Line 2 keeps working. Independent math stays alive.
-- **Orchestration**: We use **Fend-core** as our high-precision arithmetic engine, while Crunchie handles the state, the dependencies, and the "conversation" logic.
-More details in the **[Vision doc](./docs/Vision.md)**.
+
+_More details in the **[Vision doc](./docs/Vision.md)**._
 
 ## The DSL: A Conversation with a Buffer
 
@@ -38,7 +41,8 @@ area to mm^2 =       // Evaluates to: 31415.9... mm^2
 ```
 
 If you make a mistake, Crunchie **"Poisons"** that specific line and anything dependent on it, but leaves independent math untouched. One typo won't ruin your whole session.
-More details in the **[Syntax Guide](./docs/SYNTAX.md)**.
+
+_More details in the **[Syntax Guide](./docs/SYNTAX.md)**._
 
 ## The innards
 
